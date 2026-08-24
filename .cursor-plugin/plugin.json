@@ -37,7 +37,7 @@
       "TELNYX_ACCOUNT_SID": {
         "type": "string",
         "title": "Telnyx account SID",
-        "description": "Telnyx account SID used by TeXML REST paths (Accounts/:account_sid)."
+        "description": "Filled in after provisioning (ask the Bot to set up phone calling, or run scripts/provision.sh). Telnyx account SID used by TeXML REST paths (Accounts/:account_sid)."
       },
       "PHONEZERO_FROM_NUMBER": {
         "type": "string",
@@ -47,7 +47,7 @@
       "PHONEZERO_TEXML_APP_ID": {
         "type": "string",
         "title": "TeXML application ID",
-        "description": "Telnyx TeXML application SID the Bot passes when placing a call."
+        "description": "Filled in after provisioning (ask the Bot to set up phone calling, or run scripts/provision.sh). Telnyx TeXML application SID the Bot passes when placing a call."
       },
       "PHONEZERO_XAI_SIP_NUMBER": {
         "type": "string",
@@ -68,9 +68,7 @@
     },
     "required": [
       "TELNYX_API_KEY",
-      "TELNYX_ACCOUNT_SID",
       "PHONEZERO_FROM_NUMBER",
-      "PHONEZERO_TEXML_APP_ID",
       "PHONEZERO_XAI_SIP_NUMBER",
       "PHONEZERO_AGENT_NAME"
     ]

@@ -78,6 +78,8 @@ urlencode() {
 
 # Authenticated Telnyx GET/POST/PATCH. Body file optional (3rd arg).
 # Writes response to $out; prints HTTP status on stdout.
+# List endpoints: use telnyx_list ( -G --data-urlencode ) so [ ] in
+# page[size] is not globbed or sent as a glob pattern.
 telnyx_http() {
   local method="$1"
   local url="$2"
@@ -102,6 +104,19 @@ telnyx_http() {
       -H "Accept: application/json" \
       "$url"
   fi
+}
+
+telnyx_list() {
+  local url="$1"
+  local out="$2"
+  curl -sSg \
+    -o "$out" \
+    -w '%{http_code}' \
+    -G \
+    --data-urlencode "page[size]=250" \
+    -H "Authorization: Bearer ${TELNYX_API_KEY}" \
+    -H "Accept: application/json" \
+    "$url"
 }
 
 xai_http() {
@@ -283,7 +298,7 @@ resolve_account_sid
 # POST /v2/outbound_voice_profiles
 # https://developers.telnyx.com/api-reference/outbound-voice-profiles
 PROFILE_ID=""
-CODE="$(telnyx_http GET "https://api.telnyx.com/v2/outbound_voice_profiles?page[size]=250" "${WORKDIR}/profiles.json")" || true
+CODE="$(telnyx_list "https://api.telnyx.com/v2/outbound_voice_profiles" "${WORKDIR}/profiles.json")" || true
 if [ "$CODE" != "200" ]; then
   echo "error: GET /v2/outbound_voice_profiles HTTP ${CODE}" >&2
   python3 -c 'import sys; print(sys.stdin.read()[:400])' <"${WORKDIR}/profiles.json" >&2
@@ -321,13 +336,31 @@ print(json.dumps({
 fi
 export PROFILE_ID
 
+# --- inbound.xml voice_url must fetch (404 until the file is on main) --
+INBOUND_CODE="$(
+  curl -sSg \
+    -o /dev/null \
+    -w '%{http_code}' \
+    --max-time 20 \
+    "$PHONEZERO_INBOUND_XML_URL"
+)" || INBOUND_CODE="000"
+if [ "$INBOUND_CODE" != "200" ]; then
+  INBOUND_MSG="PHONEZERO_INBOUND_XML_URL HTTP ${INBOUND_CODE} (expected 200). Set PHONEZERO_INBOUND_XML_URL to your fork/branch raw URL until texml/inbound.xml is on main."
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "warning: ${INBOUND_MSG}" >&2
+  else
+    echo "error: ${INBOUND_MSG}" >&2
+    exit 1
+  fi
+fi
+
 # --- TeXML application ------------------------------------------------
 # GET /v2/texml_applications
 # POST /v2/texml_applications
 # PATCH /v2/texml_applications/{id}
 # https://developers.telnyx.com/api-reference/texml-applications
 APP_ID=""
-CODE="$(telnyx_http GET "https://api.telnyx.com/v2/texml_applications?page[size]=250" "${WORKDIR}/apps.json")" || true
+CODE="$(telnyx_list "https://api.telnyx.com/v2/texml_applications" "${WORKDIR}/apps.json")" || true
 if [ "$CODE" != "200" ]; then
   echo "error: GET /v2/texml_applications HTTP ${CODE}" >&2
   python3 -c 'import sys; print(sys.stdin.read()[:400])' <"${WORKDIR}/apps.json" >&2

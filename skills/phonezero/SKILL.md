@@ -22,15 +22,32 @@ Before collecting a task or touching Telnyx, verify these variables are present.
 | `PHONEZERO_XAI_SIP_NUMBER` | E.164 registered with xAI as `byo_trunk`. Substituted into the inline Texml SIP URI at call time. Usually the **same** number as `PHONEZERO_FROM_NUMBER` (one DID registered with xAI; a second number is not required). |
 | `PHONEZERO_AGENT_NAME` | Spoken name in the TASK BRIEF (`{agent_name}`). |
 | `PHONEZERO_DISCLOSE_AI` | Boolean, default `true`. When true, TASK BRIEF `{disclosure_clause}` is `, an automated assistant,`. When false, empty. The agent still answers truthfully if asked whether it is an AI. |
-| `XAI_API_KEY` | Environment only. Entered once via Grok Bot's secure secret request flow (masked, excluded from transcripts and model context). Used solely for `POST https://api.x.ai/v1/stt`. Never ask for this key in chat. Never echo it. |
+| `XAI_API_KEY` | Environment only. Entered once via Grok Bot's secure secret request flow (masked, excluded from transcripts and model context). Runtime: `POST https://api.x.ai/v1/stt`. Setup: `GET`/`POST`/`PATCH https://api.x.ai/v2/phone-numbers`. Never ask for it in chat. Never echo it. |
 
 Call-time required: `TELNYX_API_KEY` (working MCP), `TELNYX_ACCOUNT_SID`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_TEXML_APP_ID`, `PHONEZERO_XAI_SIP_NUMBER`, `PHONEZERO_AGENT_NAME`, `XAI_API_KEY`. `PHONEZERO_DISCLOSE_AI` may be absent (treat as `true`).
 
-If any call-time variable is missing, or the Telnyx MCP is disconnected / 401s: **stop. Do not dial.** Tell the user PhoneZero is not configured and that they should say *"Set up phone calling."* You then walk setup on this computer and browser (Telnyx DID + KYC remain manual; TeXML app / outbound profile / DID attach / xAI number registration via the Telnyx MCP and xAI API; Voice Agent Builder agent creation is console-only). Enter every plugin variable from plugin.json in Plugins → Configure. Never paste TELNYX_API_KEY or XAI_API_KEY in chat.
+If any call-time variable is missing, or the Telnyx MCP is disconnected / 401s: **stop. Do not dial.** Tell the user PhoneZero is not configured and that they should say *"Set up phone calling."* Then follow **Setup** below. Never paste TELNYX_API_KEY or XAI_API_KEY in chat.
 
 - Missing `XAI_API_KEY` after plugin config: stop and start Grok Bot's **secure secret request** flow for `XAI_API_KEY`. Never ask them to paste it in chat. After it is in the environment, re-check.
 
 Do not invent `{TELNYX_ACCOUNT_SID}`.
+
+## Setup (when the user says *Set up phone calling*)
+
+Human/developer mirrors: `docs/SETUP.md` and `scripts/provision.sh`. Telnyx account + KYC + buying the DID stay manual. Telnyx API steps go through the Telnyx MCP (`list_api_endpoints` → `get_api_endpoint_schema` → `invoke_api_endpoint`). xAI API steps use `XAI_API_KEY` from the environment (secure-secret flow — never ask for it in chat).
+
+**Keys first (or the MCP cannot run).** `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` are filled in *after* this recipe; they are not required to install the plugin. Confirm these are already saved: `TELNYX_API_KEY` (plugin variable — MCP works once it is saved), `PHONEZERO_FROM_NUMBER`, `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI`, and `XAI_API_KEY` (env). If `TELNYX_API_KEY` is missing, send the user to Plugins → Configure. If `XAI_API_KEY` is missing, start the secure secret request. Then, field-for-field:
+
+1. `GET /v2/whoami` → `data.organization_id` = `TELNYX_ACCOUNT_SID`.
+2. Find-or-create outbound voice profile name `PhoneZero US-only`: `traffic_type=conversational`, `service_plan=global`, `usage_payment_method=rate-deck`, `whitelisted_destinations=["US"]`, `daily_spend_limit="5.00"`, `daily_spend_limit_enabled=true` (`POST /v2/outbound_voice_profiles`; any other combo → Telnyx error 10015).
+3. Find-or-create TeXML app name `PhoneZero`: `voice_url` = the public raw URL of `texml/inbound.xml` (default `https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml`; verify it returns HTTP 200 before writing it — until that file is on `main`, use the user's fork/branch raw URL), `voice_method=get`, `outbound.outbound_voice_profile_id` = that profile.
+4. `PATCH /v2/phone_numbers/{phone_number_id}` `{"connection_id":"<texml_app_id>"}`.
+5. Register the DID with xAI (idempotent: `GET https://api.x.ai/v2/phone-numbers` first): `POST https://api.x.ai/v2/phone-numbers` `{"name":"PhoneZero","phoneNumber":"{PHONEZERO_FROM_NUMBER}","origin":"byo_trunk"}`.
+6. Voice Agent Builder **agent creation is console-only** (`/v1/agents` is not enabled). Walk the user through creating one agent from `prompts/voice-agent.md`, then read the `agentId` back from the Builder console (or from `GET /v2/phone-numbers` after attach).
+7. Attach the agent: `PATCH https://api.x.ai/v2/phone-numbers/{phoneNumberId}` `{"phoneNumber":{"agentId":"agent_…"},"fieldMask":{"paths":["agent_id"]}}` — never a flat `{agentId}` (rejected).
+8. Print the ids and have the user enter the remaining plugin variables: `TELNYX_ACCOUNT_SID`, `PHONEZERO_TEXML_APP_ID`, `PHONEZERO_XAI_SIP_NUMBER` (= `PHONEZERO_FROM_NUMBER`). Do not invent SIDs.
+
+Approve each credentialed step. Never echo keys.
 
 ## 2. Collect before any call
 
@@ -41,7 +58,7 @@ Required:
 | Field | Rules |
 |---|---|
 | Restaurant name | As the host will recognize it. |
-| Restaurant phone | E.164 (`+1…`). If you only have a name, look the number up, show it, and get confirmation. Reject non-US numbers. |
+| Restaurant phone | E.164 (`+1…`). If you only have a name, look the number up, show it, and get confirmation. Reject non-US numbers. `+1` numbers include Canada and Caribbean NANP — confirm the destination is in the United States; if unsure, ask, and refuse on no. |
 | Date | Concrete calendar date. |
 | Preferred time | The first ask. |
 | Window start–end | Inclusive acceptable range on that date. Concatenate into the TASK BRIEF `{window}` as a single string (e.g. `6:30 PM to 8:00 PM`). |
@@ -123,7 +140,9 @@ Use the Telnyx hosted MCP (auth is the plugin bearer; you never pass the key). T
 
 Place call: `invoke_api_endpoint` with `endpoint_name` `calls_accounts_texml_calls` (REST equivalent: `POST /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Calls`).
 
-JSON `args` (field names are PascalCase as Telnyx TeXML requires):
+TeXML body fields are PascalCase (`To`, `From`, `Texml`, …). `account_sid` is the MCP path param, not a TeXML body key.
+
+JSON `args`:
 
 ```json
 {
@@ -136,6 +155,7 @@ JSON `args` (field names are PascalCase as Telnyx TeXML requires):
   "RecordingChannels": "dual",
   "MachineDetection": "Enable",
   "AsyncAmd": true,
+  "Timeout": 30,
   "TimeLimit": 600
 }
 ```
@@ -147,6 +167,7 @@ Build `Texml` by substituting `{PHONEZERO_XAI_SIP_NUMBER}` into `texml/bridge.xm
 - `To` / `From`: E.164 only. `From` is exactly `PHONEZERO_FROM_NUMBER`.
 - Recording is call-level (`Record` true, `RecordingChannels` `dual`). Do not put `record` on `<Dial>`.
 - Restaurant AMD is call-level (`MachineDetection` `Enable`, `AsyncAmd` true). Do not put AMD on `<Sip>` — that would classify the xAI agent, not the restaurant.
+- `Timeout` 30 is the ring timeout in seconds before no-answer. Do not raise it.
 - `TimeLimit` 600s is the per-call duration cap. Do not raise it.
 - `AsyncAmd` must be `true`. Synchronous AMD blocks TeXML waiting for a status callback PhoneZero does not run. Read the AMD result post-hoc from `answered_by` on the retrieve-call endpoint (`human` | `machine` | `not_sure`): treat `machine` as voicemail, `not_sure` as human.
 - If the restaurant's reservations extension is known **and** the MCP tool schema includes `SendDigits`, add `"SendDigits": "ww2"` (or the known sequence; `w` = 500ms pause). Mid-call DTMF is not available in this architecture — if you do not know the extension, omit it.
@@ -163,9 +184,9 @@ This endpoint is eventually consistent.
 |---|---|
 | `status` `ringing`, `in-progress` | Keep polling. |
 | `status` `completed` | Go to recordings. |
-| `status` `no-answer`, `busy` | Outcome `no_answer` (retry rules in §5). No `booked`. |
+| `status` `no-answer`, `busy` | Not a booking; apply §5 retry; report `no_answer` only when `attempts >= 2`. |
 | `status` `failed`, `canceled` | Outcome `failed` always. Never `booked`. Do not override from a transcript. If a transcript exists, quote it under `failed` only. |
-| `answered_by` `machine` | Still wait for `completed`, then treat as voicemail unless a human later appears in the transcript. |
+| `answered_by` `machine` | Still wait for `completed`, then treat as voicemail unless a **non-agent channel** (never merged text) contains a human turn; the recap alone never upgrades it. |
 | `answered_by` `human` or `not_sure` | Treat as human. `not_sure` is human. |
 
 Poll every 10s while live. **Call timeout:** 12 minutes from dial. If still `ringing` / `in-progress` at 12 minutes, stop polling the live call, try recordings once, and if nothing usable → `unknown` (never `booked`).
@@ -182,7 +203,7 @@ After a terminal call status:
 4. Transcribe with xAI STT. `file` must be the last multipart field:
 
 ```bash
-curl -X POST https://api.x.ai/v1/stt \
+curl -sSg -X POST https://api.x.ai/v1/stt \
   -H "Authorization: Bearer $XAI_API_KEY" \
   -F multichannel=true \
   -F format=true \
@@ -190,7 +211,7 @@ curl -X POST https://api.x.ai/v1/stt \
   -F file=@/tmp/phonezero-{call_sid}.audio
 ```
 
-5. The multichannel response includes a `channels` array (one transcript per speaker). Identify the **agent** channel as the one whose `text` contains the canonical opener ("calling on a recorded line" / "I'd like to make a reservation"). The other channel is the **host**. If only a merged `text` is present and `channels` is missing, do not treat speaker identity as proven — you may still search the merged text for the recap, but you cannot mark `booked` without a host-side confirmation you can attribute.
+5. The multichannel response includes a `channels` array (one transcript per speaker). Identify the **agent** channel as the one whose `text` contains the canonical opener ("calling on a recorded line" / "I'd like to make a reservation"). The other channel is the **host**. If `channels` is missing or the opener cannot identify the agent channel: outcome `unknown`, never `booked`.
 
 If STT fails or returns empty text: outcome `unknown`. Never `booked`. You may retry the call later under §5 (absence is not a booking).
 
@@ -200,7 +221,7 @@ The voice agent always ends with:
 
 `Confirming: booked / not booked, {time}, party of {n}, under {name}.`
 
-Read the **closing lines** of the agent channel (or merged text if channels are unusable) for that sentence. Then independently check the host channel.
+Read the **closing lines** of the agent channel for that sentence. Then independently check the host channel. If `channels` is missing or the agent channel was not identified in §8, outcome is already `unknown` — do not search merged text for a booking.
 
 **`booked` only if all of these are true:**
 

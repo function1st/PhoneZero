@@ -14,7 +14,7 @@
 #   Request schema is oneOf: Url XOR Texml XOR neither.
 #   https://developers.telnyx.com/api-reference/texml-rest-commands/initiate-an-outbound-call
 #
-# TeXML REST uses CamelCase JSON keys (To / From / Texml / MachineDetection).
+# TeXML REST uses PascalCase JSON keys (To / From / Texml / MachineDetection).
 # ApplicationSid is required. Recording and restaurant AMD are call-level
 # (Record, RecordingChannels, MachineDetection, AsyncAmd) — not in the XML.
 # AMD on <Sip> would classify the xAI agent, not the restaurant.
@@ -36,8 +36,10 @@ usage() {
 Usage: place-call.sh [--dry-run] E.164_NUMBER
 
 Place a TeXML outbound call to a US E.164 number and print the Call SID.
-To and PHONEZERO_FROM_NUMBER must match +1 and 10 digits (v1 is US-only).
-Inline Texml bridges the answered call to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai.
+To and PHONEZERO_FROM_NUMBER must match +1 and 10 digits (syntactic guard
+only — +1 includes Canada and Caribbean NANP; US confirmation is the
+caller's job). Inline Texml bridges the answered call to
+sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai.
 
   --dry-run   Print the request (API key redacted) without sending it.
 
@@ -149,7 +151,7 @@ print(xml)
 '
 }
 
-# Build the CamelCase JSON body. python3 avoids interpolation bugs in XML.
+# Build the PascalCase JSON body. python3 avoids interpolation bugs in XML.
 # Field names verified against InitiateCallRequest. Texml is accepted by
 # the live API even when some OpenAPI snapshots omit it (Url XOR Texml).
 build_payload() {
@@ -321,10 +323,27 @@ HTTP_CODE="$(
 
 if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
   echo "error: initiate-call HTTP ${HTTP_CODE}" >&2
-  echo "(response body omitted if it might echo request fields; first 400 chars:)" >&2
+  echo "(response body excerpt; Texml redacted; first 400 chars:)" >&2
   python3 -c '
-import sys
+import json, sys
 body = sys.stdin.read()
+try:
+    data = json.loads(body)
+    def redact(obj):
+        if isinstance(obj, dict):
+            out = {}
+            for key, val in obj.items():
+                if str(key).lower() == "texml":
+                    out[key] = "<redacted>"
+                else:
+                    out[key] = redact(val)
+            return out
+        if isinstance(obj, list):
+            return [redact(x) for x in obj]
+        return obj
+    body = json.dumps(redact(data), separators=(",", ":"))
+except Exception:
+    pass
 print(body[:400])
 ' <"$TMP" >&2
   exit 1

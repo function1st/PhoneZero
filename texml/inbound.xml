@@ -8,6 +8,8 @@
 
   Served from the public repo:
   https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml
+  Until this file is on main that URL 404s — set
+  PHONEZERO_INBOUND_XML_URL to your fork/branch raw URL.
 -->
 <Response>
   <Say>This number places outbound calls only and cannot take calls.</Say>

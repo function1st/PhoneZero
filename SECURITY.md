@@ -13,9 +13,9 @@ Two keys. Different homes. Telnyx cannot transcribe Dial-verb recordings, so STT
 | Secret | Where it lives | Rule |
 |---|---|---|
 | Telnyx API key | Cursor **plugin variable** `TELNYX_API_KEY` | Entered under Plugins → Configure. Cursor's backend attaches it as the `Authorization` header on Telnyx MCP calls. It must not appear in the repo, in chat, or on the Bot computer. |
-| xAI API key | Grok Bot **secure secret request** → env `XAI_API_KEY` | Entered once through the masked flow (excluded from chat transcript and model context). Used solely for the one `POST /v1/stt` (multichannel) call per task, on the recording `media_url` fetched via Telnyx MCP. Never a plugin variable — the MCP config does not reference it. Never pasted in chat. Never written to `.env` or disk. |
+| xAI API key | Grok Bot **secure secret request** → env `XAI_API_KEY` | Entered once through the masked flow (excluded from chat transcript and model context). Runtime: `POST https://api.x.ai/v1/stt` (multichannel, on the recording `media_url` fetched via Telnyx MCP). Setup: `GET`/`POST`/`PATCH https://api.x.ai/v2/phone-numbers`. Never a plugin variable — the MCP config does not reference it. Never pasted in chat. Never written to `.env` or disk. |
 
-Voice Agent Builder holds its own console credentials on xAI's side; that is not a PhoneZero plugin variable. The Bot only needs `XAI_API_KEY` for STT.
+Voice Agent Builder holds its own console credentials on xAI's side; that is not a PhoneZero plugin variable. The Bot needs `XAI_API_KEY` for runtime STT and setup-time number registration.
 
 There is no PhoneZero server and no PhoneZero-held key. Revoke at the vendor: rotate the Telnyx key in Mission Control and update the plugin variable; rotate the xAI key in the xAI console and re-enter it through the secure-secret flow.
 
@@ -27,4 +27,4 @@ There is no PhoneZero server and no PhoneZero-held key. Revoke at the vendor: ro
 
 ## Account-wide Bot computer
 
-Grok Bot's computer is account-wide: all Bots on the account share files, browser sessions, and command-line credentials. Disk is the worst place for a PhoneZero secret. The Telnyx key never lands there (plugin variable, Cursor backend). The xAI key is allowed on the computer only through the masked secure-secret flow, and only for the STT call. Do not work around this by writing `.env` files, stuffing keys into `agent-tools/`, pasting keys in chat, or asking the Bot to `export` credentials.
+Grok Bot's computer is account-wide: all Bots on the account share files, browser sessions, and command-line credentials. Disk is the worst place for a PhoneZero secret. The Telnyx key never lands there (plugin variable, Cursor backend). The xAI key is allowed on the computer only through the masked secure-secret flow. Runtime: `POST https://api.x.ai/v1/stt`. Setup: `GET`/`POST`/`PATCH https://api.x.ai/v2/phone-numbers`. Do not work around this by writing `.env` files, stuffing keys into `agent-tools/`, pasting keys in chat, or asking the Bot to `export` credentials.

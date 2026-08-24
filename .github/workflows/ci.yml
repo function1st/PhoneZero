@@ -36,9 +36,9 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          bins=(texml/*.xml)
-          if ((${#bins[@]})); then
-            xmllint --noout "${bins[@]}"
+          xmls=(texml/*.xml)
+          if ((${#xmls[@]})); then
+            xmllint --noout "${xmls[@]}"
           else
             echo "No texml/*.xml present; skipping xmllint"
           fi

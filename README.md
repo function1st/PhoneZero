@@ -2,13 +2,15 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-PhoneZero gives [Grok Bot](https://x.ai/news/introducing-grok-bot) a phone: ask a Bot to book a restaurant table, and a Grok voice agent dials the restaurant, negotiates with the host, and the Bot confirms the outcome back in chat (`booked @ 7:15pm` / `full, offered 8:15` / `no answer`). Valid outcome states are exactly `booked | unavailable | no_answer | needs_user | unknown | failed`. The name is the pitch: **zero infrastructure** — no servers, no deployment, nothing to host. Licensed under [Apache License 2.0](LICENSE).
+PhoneZero gives [Grok Bot](https://x.ai/news/introducing-grok-bot) a phone: ask a Bot to book a restaurant table, and a Grok voice agent dials the restaurant, negotiates with the host, and the Bot confirms the outcome back in chat. Valid outcome states are exactly `booked | unavailable | no_answer | needs_user | unknown | failed`. **Zero infrastructure** — no servers, no deployment, nothing to host. Licensed under [Apache License 2.0](LICENSE).
 
 ## Adoption
 
-1. Sign up for a Telnyx account and an xAI developer account.
-2. Install the PhoneZero plugin and ask Grok Bot: *"Set up phone calling."* (The Bot performs the setup on its own computer and browser.)
-3. Ask Grok Bot: *"Book me a table for 2 at Joe's Pizza Friday around 7."*
+1. Sign up for a Telnyx account and an xAI developer account. Complete Telnyx KYC and buy one US DID.
+2. Install the PhoneZero plugin from the Cursor Marketplace, **or** clone this repo and install from the repo URL until the Marketplace listing exists.
+3. **Keys first.** In Plugins → Configure enter `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI`, and `PHONEZERO_XAI_SIP_NUMBER` (same as FROM). Enter `XAI_API_KEY` via Grok Bot's secure secret request. The Telnyx MCP works once `TELNYX_API_KEY` is saved. Leave `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` empty for now.
+4. Ask Grok Bot: *"Set up phone calling."* (Or run `scripts/provision.sh` on a personal machine that may hold keys.) Copy the printed ids into `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID`.
+5. Ask Grok Bot: *"Book me a table for 2 at Joe's Pizza Friday around 7."*
 
 ## Architecture
 
@@ -51,7 +53,7 @@ The Bot plans the call in chat and waits for your yes. One Telnyx MCP tool call 
 
 Telnyx cannot transcribe Dial-verb recordings, so the default outcome path is: fetch the recording `media_url` through the same Telnyx MCP, then transcribe with xAI STT (`POST /v1/stt`, multichannel). xAI exposes no Builder call-log API; this is the transcript. The Bot extracts the outcome from that STT result. Nothing of this stack runs on a machine you operate.
 
-The Telnyx key never lives on the Bot computer — it is a Cursor plugin variable, attached by Cursor's backend as the MCP `Authorization` header. The xAI key arrives only via Grok Bot's masked secure-secret flow and is used solely for the one STT call per task.
+The Telnyx key never lives on the Bot computer — it is a Cursor plugin variable, attached by Cursor's backend as the MCP `Authorization` header. The xAI key arrives only via Grok Bot's masked secure-secret flow. Runtime: `POST https://api.x.ai/v1/stt`. Setup: `GET`/`POST`/`PATCH https://api.x.ai/v2/phone-numbers`.
 
 ## Setup
 

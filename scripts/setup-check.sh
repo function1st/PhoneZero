@@ -70,6 +70,10 @@ require_env() {
   return 0
 }
 
+is_us_e164() {
+  [[ "$1" =~ ^\+1[0-9]{10}$ ]]
+}
+
 # Authenticated GET. Body → $1, HTTP status → stdout.
 telnyx_get() {
   local out_file="$1"
@@ -176,7 +180,13 @@ if [ "$FAILS" -gt 0 ]; then
   exit 1
 fi
 
-if [ -z "${PHONEZERO_XAI_SIP_NUMBER:-}" ]; then
+if [ -n "${PHONEZERO_XAI_SIP_NUMBER:-}" ]; then
+  if ! is_us_e164 "$PHONEZERO_XAI_SIP_NUMBER"; then
+    fail "PHONEZERO_XAI_SIP_NUMBER is not a US E.164 number (+1 and 10 digits, e.g. +15555550100)"
+  else
+    pass "PHONEZERO_XAI_SIP_NUMBER is US E.164"
+  fi
+else
   PHONEZERO_XAI_SIP_NUMBER="$PHONEZERO_FROM_NUMBER"
   export PHONEZERO_XAI_SIP_NUMBER
 fi
@@ -185,7 +195,7 @@ resolve_account_sid
 
 # Do not print the key. Only confirm it is non-empty (already) and works.
 # US-only in v1 — must match the dialer's guard in place-call.sh (is_us_e164).
-if [[ ! "${PHONEZERO_FROM_NUMBER}" =~ ^\+1[0-9]{10}$ ]]; then
+if ! is_us_e164 "$PHONEZERO_FROM_NUMBER"; then
   fail "PHONEZERO_FROM_NUMBER is not a US E.164 number (+1 and 10 digits, e.g. +15555550100)"
 else
   pass "PHONEZERO_FROM_NUMBER is US E.164"
