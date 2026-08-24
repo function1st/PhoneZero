@@ -33,9 +33,9 @@ These are the only configuration names PhoneZero uses. The plugin variables must
 |---|---|---|---|
 | `TELNYX_API_KEY` | plugin variable (secret) | A | Bearer token for the Telnyx hosted MCP. Cursor backend only. |
 | `PHONEZERO_FROM_NUMBER` | plugin variable | A | Telnyx US DID (E.164), outbound caller ID. |
-| `PHONEZERO_AGENT_NAME` | plugin variable | A | Spoken name in the opener. |
-| `PHONEZERO_DISCLOSE_AI` | plugin variable (boolean, default true) | A | Include the automated-assistant clause. |
-| `PHONEZERO_XAI_SIP_NUMBER` | plugin variable | A (same as FROM) | DID registered with xAI as `byo_trunk`. Substituted into the inline Texml SIP URI at call time. |
+| `PHONEZERO_AGENT_NAME` | plugin variable | A | Spoken name. Substituted once into the Builder prompt; also in each spoken brief. |
+| `PHONEZERO_DISCLOSE_AI` | plugin variable (boolean, default true) | A | Setup-time prompt substitution + each spoken brief. |
+| `PHONEZERO_XAI_SIP_NUMBER` | plugin variable | A (same as FROM) | DID registered with xAI as `byo_trunk`. Call-create `To` (the agent answers first). |
 | `XAI_API_KEY` | out-of-band env secret | A | Runtime STT + setup phone-numbers API. Secure-secret flow. Not in `plugin.json`. |
 | `TELNYX_ACCOUNT_SID` | plugin variable | C | TeXML REST account SID (`GET /v2/whoami` → `data.organization_id`). Find it: `curl -sSg -H "Authorization: Bearer $TELNYX_API_KEY" https://api.telnyx.com/v2/whoami`. |
 | `PHONEZERO_TEXML_APP_ID` | plugin variable | C | TeXML application SID. |
@@ -57,8 +57,8 @@ Account, KYC, and the DID stay manual. Everything after that is API-automatable.
     - `XAI_API_KEY` — register the DID with xAI.
     - `PHONEZERO_XAI_AGENT_ID` — attach a Builder agent (step 12) via the fieldMask PATCH.
 
-11. In Voice Agent Builder, create one agent. Use [`prompts/voice-agent.md`](../prompts/voice-agent.md) as the system prompt. Copy the `agentId` (`agent_…`) from the Builder console (it also appears on `GET https://api.x.ai/v2/phone-numbers` once attached). There is no public API for agent creation (`/v1/agents` is not enabled).
-12. Configure Builder **guardrails**: stay inside the booked window, verbatim read-back before accepting, no invented confirmation, hang up politely on recording or AI objection, spoken recap in the grammar the prompt specifies.
+11. **Create the Builder agent (once).** There is no public API (`/v1/agents` is not enabled). Preferred: the Bot opens Voice Agent Builder in its own browser with your approved console session, creates one agent, pastes [`prompts/voice-agent.md`](../prompts/voice-agent.md) **fully substituted once** (`{agent_name}` = `PHONEZERO_AGENT_NAME`; `{disclosure_clause}` = `, an automated assistant,` if `PHONEZERO_DISCLOSE_AI` is on, else empty), saves, and copies the `agentId`. Fallback: you do those same steps in the console and give the Bot the `agentId`. The prompt is fully static after that — **no TASK BRIEF maintenance, ever.** The console is never touched at call time; each reservation is briefed by voice in TeXML `<Say>`.
+12. Configure Builder **guardrails** once (if the console exposes them): stay inside the booked window, verbatim read-back before accepting, no invented confirmation, hang up politely on recording or AI objection, spoken recap in the grammar the prompt specifies.
 13. **Attach the agent** to the registered number. API (preferred): `PATCH https://api.x.ai/v2/phone-numbers/{phoneNumberId}` body `{"phoneNumber":{"agentId":"agent_…"},"fieldMask":{"paths":["agent_id"]}}` — protobuf FieldMask style; a flat `{"agentId":…}` is rejected. `provision.sh` does this when `PHONEZERO_XAI_AGENT_ID` is set. Or attach in the Builder console.
 14. Set a **Telnyx spend cap** on the outbound voice profile (enable daily spend limit; `provision.sh` sets `$5.00`). Caps reset 00:00 UTC. This is the server-side brake — the skill cannot enforce spend itself.
 15. Set an **xAI spend limit** in the console ([Billing → API spend management](https://docs.x.ai/console/billing)): keep invoiced billing at `$0` (prepaid only) or set a monthly top-up maximum you will notice. Voice Agent audio and STT are billed at the API rate.
@@ -79,8 +79,8 @@ Account, KYC, and the DID stay manual. Everything after that is API-automatable.
     - if `XAI_API_KEY` is in the environment: `GET https://api.x.ai/v2/phone-numbers` shows the DID registered with `origin=byo_trunk`, and whether an `agentId` is attached (missing agent is a warning — create it in Builder).
 18. **Optional developer path.** [`scripts/setup-check.sh`](../scripts/setup-check.sh) is developer-only. Run it on a **personal machine that is allowed to hold keys**, never on the Bot computer. It verifies Telnyx auth, that the number is on the account, that the TeXML application exists, and that the DID is attached to that app. If `XAI_API_KEY` is set, it also checks xAI BYO registration. It does **not** verify that the agent answers.
 19. **Test call.**
-    1. In Voice Agent Builder, update the **TASK BRIEF** with a test brief: your name, **your** phone as the "restaurant", and a note that this is a test.
-    2. Ask the Bot to dial your own E.164 via the Telnyx MCP. Wait for an explicit **yes** in chat before it places the call.
-    3. After the call, the Bot polls for completion, fetches the recording `media_url` through Telnyx MCP (download promptly — the presigned URL expires in ~10 minutes), transcribes with xAI STT (`POST /v1/stt`, multichannel), and you confirm the spoken recap appears in that transcript. Only then treat setup as done.
+    1. Ask the Bot to call **your** phone. The spoken brief should say this is a test and that the callee is the owner. The restaurant number in `<Dial>` is your E.164. Do **not** edit the Builder console.
+    2. Wait for an explicit **yes** in chat before it places the call.
+    3. After the call, the Bot polls for completion, fetches the recording `media_url` through Telnyx MCP (download promptly — the presigned URL expires in ~10 minutes), transcribes with xAI STT (`POST /v1/stt`, multichannel). You should hear the briefing first, then the opener. Confirm the spoken recap appears in that transcript. Only then treat setup as done.
 
     Scripts (`provision.sh`, `setup-check.sh`, `place-call.sh`, `get-outcome.sh`) stay under the developer-key rule in step 18 — never as the end-user verify path on the Bot computer.

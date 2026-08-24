@@ -4,6 +4,7 @@
 
 Adoption contract:
 
+0. Or point a Grok Bot at this repository URL (`AGENTS.md` routes it).
 1. Sign up for a Telnyx account and an xAI developer account. Complete Telnyx KYC and buy one US DID.
 2. Install the PhoneZero plugin (Marketplace, or from the repo URL until the listing exists).
 3. **Keys first**: enter `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_XAI_SIP_NUMBER` (= FROM), `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI` in Plugins → Configure; `XAI_API_KEY` via secure secret request. Leave `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` empty.
@@ -26,11 +27,11 @@ Grok Bot (its own cloud computer)
   │ 2. presents the call plan in chat; on my yes:
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
-Telnyx dials restaurant (recorded; async AMD on the dial request) ──(answered)──▶
-Inline Texml bridges the call to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls
+Telnyx To = sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai  (agent answers)
+Inline Texml: Pause → <Say>{task_brief}> → <Dial>{restaurant}
                                   ▼
-                  xAI Voice Agent (Builder-configured)
-                  negotiates within the window · closing spoken recap
+                  xAI Voice Agent (static Builder prompt)
+                  absorbs spoken brief · negotiates · closing recap
                                   ▼
 Grok Bot polls for call completion, fetches the recording (Telnyx MCP),
 transcribes it (xAI POST /v1/stt, multichannel)
@@ -41,7 +42,7 @@ transcribes it (xAI POST /v1/stt, multichannel)
 |---|---|---|
 | Voice agent (prompt, guardrails, turn-taking, tools) | **xAI Voice Agent Builder** — answers calls arriving on the SIP-connected number | The conversation with the restaurant |
 | Call origination | **Telnyx hosted MCP** (`https://api.telnyx.com/v2/mcp`, streamable HTTP + bearer) called by the Bot | One tool call places the outbound call |
-| Restaurant ↔ agent bridge | **Inline TeXML** on the call-create request (`Texml` field; template `texml/bridge.xml`) — `<Dial answerOnBridge="true" timeLimit="600"><Sip>sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls</Sip></Dial>`. Recording and AMD are call-level params, not in the XML. No hosted bin. | Telnyx and xAI exchange audio directly over SIP; no middleman |
+| Restaurant ↔ agent bridge | **Inline TeXML** (`Texml` field; template `texml/bridge.xml`): `To` is the agent SIP URI; XML is `<Pause/><Say>{task_brief}/><Dial>{restaurant}`. Recording is call-level. No AMD (would classify the agent). No hosted bin. Spoken-brief mechanic **live-verified Aug 2026**. | Agent answers first, hears the brief, then Telnyx dials the restaurant |
 | Outcome | **Dual-channel call recording fetched via Telnyx + xAI STT transcription** (`POST /v1/stt`, multichannel). Verified: Telnyx does not transcribe Dial-verb recordings — TeXML transcription exists only for `<Record transcription="true">` and the webhook-dependent `<Transcription>` verb | The agent's closing recap makes the transcript trivially machine-readable; the Bot (an LLM) extracts the outcome |
 | Orchestration | **Grok Bot** guided by `skills/phonezero/SKILL.md` | Plans, confirms, dials, polls, reads, retries, reports in chat |
 | Human audit trail | Builder console (recordings, transcripts, tool traces per call) | Review only — never on the Bot's critical path |
@@ -73,14 +74,14 @@ Canonical opener:
 - Negotiate only within the user's window; **verbatim read-back before accepting**; never invent a confirmation.
 - Every call ends with the spoken structured recap: "Confirming: booked / not booked, {time}, party of {n}, under {name}."
 - If the callee objects to recording or AI: end politely, report `needs_user`.
-- Voicemail (Telnyx AMD, **async mode** — synchronous AMD requires a status-callback server we don't have; the result is read post-hoc from `answered_by` on the call-fetch endpoint): leave a short message with the callback number, don't book; the skill retries once after 20 minutes (max 2 attempts).
-- Per-call briefing: the Builder agent's prompt has a static behavior section and a task-brief section the Bot updates in the Builder console before each dial (the one browser-driven step in orchestration; Phase 1 verifies whether a faster injection path exists).
+- Voicemail is conversational (the static prompt already covers it). The Bot classifies voicemail from the transcript (greeting/beep, no human turn). Leave a short message with the callback number, don't book; the skill retries once after 20 minutes (max 2 attempts).
+- Per-call briefing is **spoken**: Telnyx TTS reads the task brief into the call after the agent answers (`<Say>`), then dials the restaurant. The Builder prompt is fully static — never edited per call. Live-verified Aug 2026.
 
 ### Counter-offer negotiation ("7 is full, how about 8:15?")
 
 There is no live relay from the voice agent back to the Bot in the zero-server architecture — the Bot is an MCP client; nothing can push a question into it mid-call. Three tiers:
 
-1. **Pre-briefed alternates (default, covers most cases):** before dialing, the skill computes the acceptable window and ranked alternates from the user's stated flexibility and calendar ("Fri 6:30–8:00 all fine; Sat 7 as backup") and bakes them into the agent's session prompt. The agent accepts any in-window counter-offer on the spot.
+1. **Pre-briefed alternates (default, covers most cases):** before dialing, the skill computes the acceptable window and ranked alternates from the user's stated flexibility and calendar ("Fri 6:30–8:00 all fine; Sat 7 as backup") and speaks them in the TeXML `<Say>` briefing. The agent accepts any in-window counter-offer on the spot.
 2. **Tentative hold + callback:** for an out-of-window offer, the agent asks the host to hold it if possible, reports `needs_user` with the offer in the recap, the Bot asks me in chat, and a confirmation call-back (cheap: ~$0.40) locks it in.
 3. **Live mid-call relay** — the one capability that genuinely requires infrastructure: a control-plane worker holding the call's WebSocket exposes a `check_availability` function tool answered from the calendar in real time. This is the flagship feature of the upgrade path (appendix), not the default.
 
@@ -114,7 +115,8 @@ Patterns adopted: plan-first confirmation before any dial (CALL-E's confirm-toke
 ```
 skills/phonezero/SKILL.md   the product: preconditions, collect, plan-first confirm,
                             dial, poll, STT, outcome extraction, delete, report
-prompts/voice-agent.md      Builder system prompt (STATIC BEHAVIOR + TASK BRIEF sections)
+prompts/voice-agent.md      Builder system prompt (fully static; spoken brief at call time)
+AGENTS.md                   repo-root bootstrap hook for agents pointed at this repo
 texml/bridge.xml            inline TeXML template (SIP bridge; substituted at call time)
 texml/inbound.xml           TeXML app voice_url (inbound-only reject + hangup)
 scripts/place-call.sh       developer-only curl equivalent of the MCP dial
@@ -156,12 +158,12 @@ Hygiene from commit one (history becomes public): no secret ever committed, secr
 - Prove the path by hand, zero code: console-created Builder agent + SIP-registered number + one MCP/REST dial with inline TeXML → the agent talks to me on my own phone.
 
 ### Phase 1 — Calling assets — **done** (implemented + verified Aug 2026)
-- `prompts/voice-agent.md` v1 (opener, negotiation rules, recap grammar); `texml/bridge.xml` is SIP-only; `Record`/`RecordingChannels=dual` are call-level on the create request (restaurant AMD lives on the REST/MCP dial request, async mode); developer scripts.
+- `prompts/voice-agent.md` v1 (opener, negotiation rules, recap grammar; fully static); `texml/bridge.xml` is Pause/Say/Dial; `Record`/`RecordingChannels=dual` are call-level; no AMD; developer scripts.
 - Exercise the outcome loop: recording `media_url` → xAI STT (multichannel) → outcome extraction; validate speaker separation and recap detectability.
 
 ### Phase 2 — Call quality — **done** (implemented + verified Aug 2026)
 - Persona eval checklist against the live agent (all scenarios in `docs/PERSONAS.md`): scripted scenarios I answer myself, asserting the recap and outcome state are correct each time.
-- Known-extension IVRs via `SendDigits` on the dial request (only if the MCP tool schema exposes it); document that mid-call IVR digit-pressing is not possible in this architecture (appendix restores it).
+- Restaurant IVR is conversational (or `needs_user`); `SendDigits` is not available in this shape (it would hit the agent `To` leg). Mid-call digit-pressing is not possible (appendix restores it).
 - Tune Builder guardrails; verify console artifacts for human review.
 
 ### Phase 3 — The skill — **done** (implemented + verified Aug 2026)
@@ -171,7 +173,7 @@ Hygiene from commit one (history becomes public): no secret ever committed, secr
 ### Phase 4 — Marketplace submit; stranger test against SETUP.md
 - Cursor Marketplace submission; tagged release → SHA-pinned PR to `xai-org/plugin-marketplace`.
 - Stranger test: fresh Telnyx + xAI accounts → working test call in their own Grok Bot, driven only by the skill and `docs/SETUP.md`.
-- Skill-guided setup: the Bot configures Telnyx (DID, outbound voice profile, TeXML app with `voice_url=texml/inbound.xml`, DID `connection_id` attach; outbound calls carry inline Texml — no bin) and Builder (agent creation is console-only; SIP register + attach via API), with the human approving each credentialed step and entering the Telnyx key as a plugin variable.
+- Skill-guided setup: the Bot configures Telnyx (DID, outbound voice profile, TeXML app with `voice_url=texml/inbound.xml`, DID `connection_id` attach; outbound calls carry inline Texml — no bin) and Builder (agent creation in the Bot's browser with approval, or a human walkthrough; SIP register + attach via API), with the human approving each credentialed step and entering the Telnyx key as a plugin variable.
 
 ## Test strategy
 
@@ -187,7 +189,7 @@ Hygiene from commit one (history becomes public): no secret ever committed, secr
 | Agent invents a confirmation | Recap + verbatim read-back required; the Bot reports `booked` only when the transcript shows the host confirming; console audio as final arbiter |
 | Recording missing/delayed after call end | Poll with timeout; absence = `unknown` (never `booked`) before retry |
 | Counter-offer outside the window | Tier 2: tentative hold + callback; never auto-accept out-of-window |
-| Mid-call IVR ("press 2 for reservations") | `SendDigits` on the dial for known extensions; otherwise a documented limitation |
+| Mid-call IVR ("press 2 for reservations") | Conversational handling or `needs_user`; `SendDigits` would hit the agent To-leg |
 | Model alias repricing/behavior drift | Pin the Grok voice model version; per-call duration cap |
 | Telnyx KYC delays | Phase 0 first |
 | Restaurants hang up on AI callers | Concrete ask in the first sentence; iterate the opener from transcripts |

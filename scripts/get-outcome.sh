@@ -9,8 +9,8 @@
 # Call status (eventually consistent; MCP: retrieve_calls_accounts_texml_calls):
 #   GET /v2/texml/Accounts/{account_sid}/Calls/{call_sid}
 #   https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-a-call
-#   AMD verdict is answered_by on that resource (human | machine | not_sure),
-#   because place-call.sh sends AsyncAmd=true and omits StatusCallback.
+#   AMD / answered_by are unused (MachineDetection is off). Voicemail is
+#   classified from the transcript, not from answered_by.
 #
 # Recordings (MCP: recordings_json_calls_accounts_texml_recordings_json):
 #   GET /v2/texml/Accounts/{account_sid}/Calls/{call_sid}/Recordings.json
@@ -45,8 +45,9 @@ Usage: get-outcome.sh [--timeout SECONDS] [--interval SECONDS] [--rec-interval S
 
 Poll a TeXML call until it reaches a terminal status, download a
 completed recording (presigned media_url expires ~10 min), and
-transcribe with xAI STT (multichannel). Prints answered_by (AMD) and
-the per-channel transcript. Never prints media_url.
+transcribe with xAI STT (multichannel). Prints the per-channel
+transcript. Never prints media_url. Voicemail is classified from the
+transcript (not from answered_by).
 
   --timeout SECONDS         Live-call poll timeout (default: 720)
   --interval SECONDS        Live-call poll interval (default: 10)
@@ -467,7 +468,6 @@ echo "Polling call status every ${INTERVAL_SECS}s (timeout ${TIMEOUT_SECS}s)"
 
 ELAPSED=0
 STATUS=""
-ANSWERED_BY=""
 
 while :; do
   CODE="$(telnyx_get "${WORKDIR}/call.json" "$CALL_URL")"
@@ -483,14 +483,7 @@ d=json.load(sys.stdin)
 print(d.get("status") or "")
 ' <"${WORKDIR}/call.json"
   )"
-  ANSWERED_BY="$(
-    python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-print(d.get("answered_by") or "")
-' <"${WORKDIR}/call.json"
-  )"
-  echo "  status=${STATUS}${ANSWERED_BY:+ answered_by=${ANSWERED_BY}} (${ELAPSED}s)"
+  echo "  status=${STATUS} (${ELAPSED}s)"
   if is_terminal "$STATUS"; then
     break
   fi
@@ -504,14 +497,7 @@ done
 echo
 echo "Call SID:    ${CALL_SID}"
 echo "Status:      ${STATUS}"
-if [ -n "$ANSWERED_BY" ]; then
-  # answered_by is where the AMD verdict lands when AsyncAmd=true and
-  # StatusCallback is omitted (zero-server). Enum: human | machine | not_sure.
-  # https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-a-call
-  echo "Answered-by: ${ANSWERED_BY}  (AMD; GET call resource answered_by)"
-else
-  echo "Answered-by: (empty — AMD result not populated on this resource yet)"
-fi
+echo "Voicemail:   classify from the transcript (AMD/answered_by unused)"
 
 CALL_TIMED_OUT=0
 if ! is_terminal "$STATUS"; then

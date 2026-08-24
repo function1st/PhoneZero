@@ -2,23 +2,30 @@
 <!--
   PhoneZero inline TeXML template — not a hosted bin.
 
-  At call time the caller substitutes {PHONEZERO_XAI_SIP_NUMBER} and
-  passes the whole XML string as the Texml field on
+  Call-create To (request field, not in this XML):
+    sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls
+  The Builder agent answers that To immediately.
+
+  At call time the caller substitutes:
+    {PHONEZERO_TASK_BRIEF}  — spoken briefing (XML-escaped: & < > at minimum)
+    {RESTAURANT_E164}       — restaurant PSTN E.164 inside <Dial>
+
+  and passes the whole XML string as the Texml field on
   POST /v2/texml/Accounts/{account_sid}/Calls
   (request schema is oneOf: Url XOR Texml XOR neither — do not send Url
-  when Texml is set). Telnyx executes these instructions instead of
-  fetching a bin URL.
+  when Texml is set).
 
-  Recording and restaurant AMD live on the call-creation request, not
-  in this XML:
-    Record=true, RecordingChannels=dual
-    MachineDetection=Enable, AsyncAmd=true
+  Flow: Pause → <Say> briefing (Telnyx TTS into the agent) → <Dial> the
+  restaurant. The agent hears ringback until a human or voicemail answers.
 
-  AMD must not be set on <Sip>: Dial machineDetection classifies the
-  DESTINATION of this Dial (the xAI agent), not the restaurant.
+  Recording is call-level on the create request (Record=true,
+  RecordingChannels=dual). Do not put record on <Dial>.
+
+  Do not set MachineDetection / AsyncAmd on this call. They would classify
+  the To leg (the xAI agent), which is useless. Voicemail is conversational.
 -->
 <Response>
-  <Dial answerOnBridge="true" timeLimit="600">
-    <Sip>sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls</Sip>
-  </Dial>
+  <Pause length="1"/>
+  <Say>{PHONEZERO_TASK_BRIEF}</Say>
+  <Dial answerOnBridge="true" timeLimit="600">{RESTAURANT_E164}</Dial>
 </Response>

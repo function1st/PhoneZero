@@ -6,7 +6,7 @@ Do not use real numbers. Fixtures only.
 
 ## Shared briefing (every scenario unless noted)
 
-Replace only the TASK BRIEF block in `prompts/voice-agent.md` (do not edit STATIC BEHAVIOR) with:
+The Builder prompt is static. Each call's facts are spoken by Telnyx TTS (`<Say>`) before the restaurant is dialed. Use this spoken brief (do not edit the Builder prompt):
 
 | Placeholder | Value |
 |---|---|
@@ -44,9 +44,9 @@ Callee fixture: `+15555550100`. Evaluator phone is this DID or a SIP stand-in la
 
 ## 2. IVR then human
 
-**Host script.** First 15–20s: recorded menu only — "Thank you for calling Joe's Pizza. Press 1 for hours. Press 2 for reservations. Press 0 for the host." Do not speak as a human yet. After `SendDigits` (or one full menu loop if no digits were sent), pick up as a person: "Reservations." Book 7:00 for 2 under Alex Example. Confirm the read-back.
+**Host script.** First 15–20s: recorded menu only — "Thank you for calling Joe's Pizza. Press 1 for hours. Press 2 for reservations. Press 0 for the host." Do not speak as a human yet. After one full menu loop, pick up as a person: "Reservations." Book 7:00 for 2 under Alex Example. Confirm the read-back.
 
-**Expected agent.** Do not speak DTMF or invent button presses. If a human answers, proceed with the opener (or a compressed ask if they already said "Reservations"). If the menu repeats with no human after one full cycle, end the call without booking. Mid-call digit-pressing is out of scope.
+**Expected agent.** Do not speak DTMF or invent button presses (`SendDigits` is not available in this call shape). If a human answers, proceed with the opener (or a compressed ask if they already said "Reservations"). If the menu repeats with no human after one full cycle, end the call without booking. Mid-call digit-pressing is out of scope.
 
 **Outcome.** `booked` if a human confirmed 7:00. If the agent hung up still in the menu with no human: `unknown` (no host) or `no_answer` — never `booked`. Recap required only if the agent had an audio turn it controlled.
 
@@ -64,7 +64,7 @@ Callee fixture: `+15555550100`. Evaluator phone is this DID or a SIP stand-in la
 
 **Host script.** Do not pick up. After rings, play: "You've reached Joe's Pizza. Leave a message after the beep." Beep. Record. Do not call back during this attempt.
 
-**Expected agent.** Treat as voicemail. Leave one short message that includes `{callback_phone}` (`+15555550199`). Do not claim a reservation. Do not ask the mailbox to "book 7:00." Closing recap `not booked` if still connected. Hang up.
+**Expected agent.** Treat as voicemail conversationally (no AMD). Leave one short message that includes `{callback_phone}` (`+15555550199`). Do not claim a reservation. Do not ask the mailbox to "book 7:00." Closing recap `not booked` if still connected. Hang up. The Bot classifies voicemail from the transcript (greeting/beep, no human turn).
 
 **Outcome.** voicemail — not terminal; skill retries; final `no_answer` only after attempt 2.
 
@@ -188,6 +188,22 @@ Must not contain `Confirming: booked`.
 
 ---
 
+## 11. Briefing integrity
+
+**Host script.** (Evaluator: place the call with **no** spoken brief, or a garbled/incomplete brief that omits restaurant, party, date, or window.) If the agent still tries to book, play a willing host: "Sure, 7 for two, Alex Example, you're down."
+
+**Expected agent.** Absorb nothing as a restaurant. Do not improvise a reservation. Politely end the call. No read-back of a booking. Recap `not booked` if the agent had an audio turn it controlled; otherwise silence is acceptable.
+
+**Outcome.** `unknown` or `failed` — never `booked`, even if the host offered a table.
+
+**Transcript must contain.** No `Confirming: booked`. If a recap is present it is:
+
+`Confirming: not booked, 7:00 PM, party of 2, under Alex Example.`
+
+(or the agent ends without a recap because it never controlled a reservation turn.)
+
+---
+
 ## Scoring
 
-A scenario passes only if the outcome state matches and the xAI STT transcript contains the recap line exactly (punctuation and field order as written). Identify the agent channel by the opener text; the other channel is the host. For `booked`, also highlight the host-channel confirmation turn in the eval notes. Builder console audio is the tie-breaker when channel labels are messy; the skill still must not report `booked` without a host confirmation in the xAI STT transcript.
+A scenario passes only if the outcome state matches and the xAI STT transcript contains the recap line exactly (punctuation and field order as written) when a recap is required. Identify the agent channel by the opener text; the channel that contains the briefing TTS (and not the opener) is the Telnyx/instruction side — not the host. For `booked`, also highlight the host-channel confirmation turn in the eval notes. Builder console audio is the tie-breaker when channel labels are messy; the skill still must not report `booked` without a host confirmation in the xAI STT transcript.

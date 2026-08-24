@@ -6,6 +6,7 @@ PhoneZero gives [Grok Bot](https://x.ai/news/introducing-grok-bot) a phone: ask 
 
 ## Adoption
 
+0. **Or point a Grok Bot at this repository URL** and ask it to set up phone calling — [`AGENTS.md`](AGENTS.md) routes it to the skill.
 1. Sign up for a Telnyx account and an xAI developer account. Complete Telnyx KYC and buy one US DID.
 2. Install the PhoneZero plugin from the Cursor Marketplace, **or** clone this repo and install from the repo URL until the Marketplace listing exists.
 3. **Keys first.** In Plugins → Configure enter `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI`, and `PHONEZERO_XAI_SIP_NUMBER` (same as FROM). Enter `XAI_API_KEY` via Grok Bot's secure secret request. The Telnyx MCP works once `TELNYX_API_KEY` is saved. Leave `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` empty for now.
@@ -24,10 +25,11 @@ Grok Bot (its own cloud computer)
   │ 2. presents the call plan in chat; on my yes:
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
-Telnyx dials restaurant (call-level Record dual + async AMD) ──(answered)──▶
-Inline Texml bridges to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls
-                                  ▼
-                  xAI Voice Agent (Builder-configured)
+Telnyx To = sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai  (agent answers)
+  ▼
+Inline Texml: Pause → <Say>{task_brief}> → <Dial>{restaurant}
+  ▼
+Agent absorbs the spoken brief, hears ringback, then talks to the host
                   negotiates within the window · closing spoken recap
                                   ▼
 Grok Bot polls for call completion, fetches recording media_url
@@ -35,7 +37,7 @@ Grok Bot polls for call completion, fetches recording media_url
 ──▶ confirms outcome to me in chat · books my calendar if asked
 ```
 
-**Verified (Aug 2026):** the full pipeline — MCP dial with inline Texml → SIP bridge → Builder agent answers → dual-channel recording → xAI STT transcript → recording deletion — was proven end-to-end.
+**Verified (Aug 2026):** the full pipeline — MCP dial → agent answers → spoken brief heard verbatim → restaurant bridge → dual-channel recording → xAI STT → recording deletion — was proven end-to-end. The spoken-brief mechanic was live-verified the same day.
 
 ## Cost
 
@@ -49,7 +51,7 @@ Grok Bot polls for call completion, fetches recording media_url
 
 ## How it works
 
-The Bot plans the call in chat and waits for your yes. One Telnyx MCP tool call originates the outbound leg from your DID. The call-create request carries **inline TeXML** (`Texml` field; template `texml/bridge.xml`) that bridges the answered call to an xAI Voice Agent over SIP (`sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`). There is no hosted TeXML bin. Dual-channel recording and restaurant AMD are call-level params. The agent negotiates only inside the window you approved, reads the reservation back before accepting, and ends with a spoken recap.
+The Bot plans the call in chat and waits for your yes. One Telnyx MCP tool call sets `To` to the xAI agent SIP URI (`sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`). The agent answers immediately. Inline TeXML (`Texml` field; template `texml/bridge.xml`) then speaks a task brief (Telnyx TTS) and dials the restaurant. There is no hosted TeXML bin and no per-call Builder-console edit — the Builder prompt is static and the console is never touched at call time. Dual-channel recording is call-level. The agent negotiates only inside the window you approved, reads the reservation back before accepting, and ends with a spoken recap. Voicemail is handled conversationally and classified from the transcript.
 
 Telnyx cannot transcribe Dial-verb recordings, so the default outcome path is: fetch the recording `media_url` through the same Telnyx MCP, then transcribe with xAI STT (`POST /v1/stt`, multichannel). xAI exposes no Builder call-log API; this is the transcript. The Bot extracts the outcome from that STT result. Nothing of this stack runs on a machine you operate.
 

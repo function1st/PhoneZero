@@ -9,6 +9,8 @@ Grok Bot skill. You collect a reservation task, try online booking first, confir
 
 v1 is US destinations only. Never place a call outside the United States. Never place bulk or multi-destination calls. Never auto-dial.
 
+**Bootstrap from repo.** If you reached this skill by being pointed at the repository rather than an installed plugin: read `README.md` and `docs/SETUP.md`, then run the Setup section below. Plugin variables can be entered when the plugin is installed, or held as environment/config for this session. `AGENTS.md` is the repo-root hook.
+
 ## 1. Preconditions
 
 Before collecting a task or touching Telnyx, verify these variables are present. Read them; do not echo secrets.
@@ -19,9 +21,9 @@ Before collecting a task or touching Telnyx, verify these variables are present.
 | `TELNYX_ACCOUNT_SID` | Plugin variable. Telnyx account SID in every TeXML path: `/v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/…`. |
 | `PHONEZERO_FROM_NUMBER` | E.164 DID Telnyx will present as `From`. |
 | `PHONEZERO_TEXML_APP_ID` | TeXML Application SID (`ApplicationSid` on the dial). |
-| `PHONEZERO_XAI_SIP_NUMBER` | E.164 registered with xAI as `byo_trunk`. Substituted into the inline Texml SIP URI at call time. Usually the **same** number as `PHONEZERO_FROM_NUMBER` (one DID registered with xAI; a second number is not required). |
-| `PHONEZERO_AGENT_NAME` | Spoken name in the TASK BRIEF (`{agent_name}`). |
-| `PHONEZERO_DISCLOSE_AI` | Boolean, default `true`. When true, TASK BRIEF `{disclosure_clause}` is `, an automated assistant,`. When false, empty. The agent still answers truthfully if asked whether it is an AI. |
+| `PHONEZERO_XAI_SIP_NUMBER` | E.164 registered with xAI as `byo_trunk`. The call-create `To` target: `sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`. Usually the **same** number as `PHONEZERO_FROM_NUMBER` (one DID; a second number is not required). |
+| `PHONEZERO_AGENT_NAME` | Spoken name. Substituted once into `prompts/voice-agent.md` at agent creation (`{agent_name}`). Also spoken in each call's task brief. |
+| `PHONEZERO_DISCLOSE_AI` | Boolean, default `true`. Substituted once into the Builder prompt at agent creation (`{disclosure_clause}` = `, an automated assistant,` when true; empty when false). Also stated in each spoken brief. The agent still answers truthfully if asked whether it is an AI. |
 | `XAI_API_KEY` | Environment only. Entered once via Grok Bot's secure secret request flow (masked, excluded from transcripts and model context). Runtime: `POST https://api.x.ai/v1/stt`. Setup: `GET`/`POST`/`PATCH https://api.x.ai/v2/phone-numbers`. Never ask for it in chat. Never echo it. |
 
 Call-time required: `TELNYX_API_KEY` (working MCP), `TELNYX_ACCOUNT_SID`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_TEXML_APP_ID`, `PHONEZERO_XAI_SIP_NUMBER`, `PHONEZERO_AGENT_NAME`, `XAI_API_KEY`. `PHONEZERO_DISCLOSE_AI` may be absent (treat as `true`).
@@ -43,7 +45,7 @@ Human/developer mirrors: `docs/SETUP.md` and `scripts/provision.sh`. Telnyx acco
 3. Find-or-create TeXML app name `PhoneZero`: `voice_url` = the public raw URL of `texml/inbound.xml` (default `https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml`; verify it returns HTTP 200 before writing it — until that file is on `main`, use the user's fork/branch raw URL), `voice_method=get`, `outbound.outbound_voice_profile_id` = that profile.
 4. `PATCH /v2/phone_numbers/{phone_number_id}` `{"connection_id":"<texml_app_id>"}`.
 5. Register the DID with xAI (idempotent: `GET https://api.x.ai/v2/phone-numbers` first): `POST https://api.x.ai/v2/phone-numbers` `{"name":"PhoneZero","phoneNumber":"{PHONEZERO_FROM_NUMBER}","origin":"byo_trunk"}`.
-6. Voice Agent Builder **agent creation is console-only** (`/v1/agents` is not enabled). Walk the user through creating one agent from `prompts/voice-agent.md`, then read the `agentId` back from the Builder console (or from `GET /v2/phone-numbers` after attach).
+6. Voice Agent Builder **agent creation has no public API** (`/v1/agents` is not enabled). **You** perform it in this Bot's own browser with the user's approved console session at the xAI Voice Agent Builder: create one agent → paste `prompts/voice-agent.md` fully substituted once (`{agent_name}` = `PHONEZERO_AGENT_NAME`; `{disclosure_clause}` = `, an automated assistant,` if `PHONEZERO_DISCLOSE_AI` is true, else empty) → save → copy the `agentId`. The prompt is fully static after that — never edit it per call. If browser access to the console is unavailable, walk the human through the same steps and read the `agentId` back.
 7. Attach the agent: `PATCH https://api.x.ai/v2/phone-numbers/{phoneNumberId}` `{"phoneNumber":{"agentId":"agent_…"},"fieldMask":{"paths":["agent_id"]}}` — never a flat `{agentId}` (rejected).
 8. Print the ids and have the user enter the remaining plugin variables: `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID`. Do not invent SIDs.
 
@@ -61,7 +63,7 @@ Required:
 | Restaurant phone | E.164 (`+1…`). If you only have a name, look the number up, show it, and get confirmation. Reject non-US numbers. `+1` numbers include Canada and Caribbean NANP — confirm the destination is in the United States; if unsure, ask, and refuse on no. |
 | Date | Concrete calendar date. |
 | Preferred time | The first ask. |
-| Window start–end | Inclusive acceptable range on that date. Concatenate into the TASK BRIEF `{window}` as a single string (e.g. `6:30 PM to 8:00 PM`). |
+| Window start–end | Inclusive acceptable range on that date. Concatenate into the spoken brief `{window}` as a single string (e.g. `6:30 PM to 8:00 PM`). |
 | Ranked alternates | Ordered fallback times the agent may accept without asking you. |
 | Party size | Integer ≥ 1. |
 | Booking name | Name on the reservation. |
@@ -69,7 +71,7 @@ Required:
 
 Optional: special requests (high-top, allergies, stroller). Pass through; do not invent.
 
-**Window and alternates.** Collect start and end, then concatenate into `{window}` for the call plan and TASK BRIEF (e.g. start `6:30 PM` + end `8:00 PM` → `6:30 PM to 8:00 PM`). If the user said "around 7" and did not give a window, propose a default (preferred ± 30–60 minutes, e.g. `6:30 PM to 8:00 PM`) and the ranked in-window slots (e.g. 6:45, 7:15, 7:30). Confirm that proposal in the call plan — do not silently widen it.
+**Window and alternates.** Collect start and end, then concatenate into `{window}` for the call plan and spoken brief (e.g. start `6:30 PM` + end `8:00 PM` → `6:30 PM to 8:00 PM`). If the user said "around 7" and did not give a window, propose a default (preferred ± 30–60 minutes, e.g. `6:30 PM to 8:00 PM`) and the ranked in-window slots (e.g. 6:45, 7:15, 7:30). Confirm that proposal in the call plan — do not silently widen it.
 
 **Calendar.** If this Bot can read the user's calendar, compute alternates as times inside the window that do not conflict (travel buffer ~30 minutes before/after existing events). Rank: preferred time first, then nearest free in-window slots. If a backup day is free and the user allowed it, list it as a lower-rank alternate and say so in the plan. If there is no calendar access, use only the user's stated flexibility.
 
@@ -125,14 +127,21 @@ If they ask to call outside restaurant hours but still inside 09:00–21:00 user
 
 Voicemail / no-answer: leave the message (the agent does this), increment `attempts`, wait 20 minutes, re-check hours, **re-show the plan** (`Attempt {attempts + 1} of 2`, same ask), and dial only on a fresh yes. After two completed attempts still no human (`attempts >= 2`): outcome `no_answer`. Stop.
 
-## 6. Brief the voice agent, then dial
+## 6. Speak the brief, then dial
 
-`prompts/voice-agent.md` has two sections:
+The Builder prompt (`prompts/voice-agent.md`) is **fully static**. `{agent_name}` and `{disclosure_clause}` were substituted once at agent creation. **Never edit the Builder prompt per call. Never open the Builder console at call time.**
 
-- **STATIC BEHAVIOR** — loaded once at setup. Never edit this section per call.
-- **TASK BRIEF** — the only block you replace. In the Voice Agent Builder console, substitute this call's values into the TASK BRIEF delimited block and replace that block only. Do not dial with a stale brief from a prior restaurant or window.
+Each call briefs the agent by voice: Telnyx TTS reads `{task_brief}` into the call after the agent answers and before the restaurant is dialed. The agent then hears ringback until a human (or voicemail) answers.
 
-`{agent_name}` is `PHONEZERO_AGENT_NAME`. `PHONEZERO_DISCLOSE_AI` defaults `true` → `{disclosure_clause}` = `, an automated assistant,`. If `false`, `{disclosure_clause}` is empty. The agent still answers truthfully if asked whether it is an AI. EU destinations are out of v1 scope.
+Build `{task_brief}` from this compact template (plain facts only — no markup, no quotes that are not part of a name):
+
+```
+Task briefing for {agent_name}. This is an automated briefing, not a restaurant. Disclosure: {disclosure_instruction}. Restaurant: {restaurant_name}. Party of {n}. Date: {date}. Preferred time: {time}. Window: {window}. Ranked alternates: {alternates}. Booking name: {booking_name}. Callback: {callback_phone}. Special requests: {special_requests or none}.
+```
+
+`{disclosure_instruction}`: if `PHONEZERO_DISCLOSE_AI` is true (default), `include the automated-assistant clause in the opener`. If false, `omit the automated-assistant clause; still answer truthfully if asked whether you are an AI`. `{agent_name}` is `PHONEZERO_AGENT_NAME`.
+
+**XML-escape `{task_brief}` before interpolating it into TeXML.** Escape `&`, `<`, and `>` at minimum (`&amp;` `&lt;` `&gt;`). Do not put raw ampersands or angle brackets in `<Say>`.
 
 ### Dial — Telnyx hosted MCP
 
@@ -148,35 +157,34 @@ JSON `args`:
 {
   "account_sid": "{TELNYX_ACCOUNT_SID}",
   "ApplicationSid": "{PHONEZERO_TEXML_APP_ID}",
-  "To": "{restaurant_phone}",
+  "To": "sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls",
   "From": "{PHONEZERO_FROM_NUMBER}",
-  "Texml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Dial answerOnBridge=\"true\" timeLimit=\"600\"><Sip>sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls</Sip></Dial></Response>",
+  "Texml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Pause length=\"1\"/><Say>{task_brief}</Say><Dial answerOnBridge=\"true\" timeLimit=\"600\">{restaurant_phone}</Dial></Response>",
   "Record": true,
   "RecordingChannels": "dual",
-  "MachineDetection": "Enable",
-  "AsyncAmd": true,
   "Timeout": 30,
   "TimeLimit": 600
 }
 ```
 
-Build `Texml` by substituting `{PHONEZERO_XAI_SIP_NUMBER}` into `texml/bridge.xml` (strip XML comments and newlines). Do not send `Url` — the request schema is oneOf: `Url` XOR `Texml` XOR neither.
+Build `Texml` by substituting XML-escaped `{PHONEZERO_TASK_BRIEF}` and `{RESTAURANT_E164}` into `texml/bridge.xml` (strip XML comments and newlines). `{PHONEZERO_XAI_SIP_NUMBER}` is the request `To`, not a field in this XML. Do not send `Url` — the request schema is oneOf: `Url` XOR `Texml` XOR neither.
 
 **Schema lag:** `get_api_endpoint_schema` for `calls_accounts_texml_calls` does **not** list `Texml` (the MCP's OpenAPI snapshot lags the API). `invoke_api_endpoint` still passes `Texml` through and it works. Do not "correct" yourself off the schema — omit `Url` and send `Texml`.
 
-- `To` / `From`: E.164 only. `From` is exactly `PHONEZERO_FROM_NUMBER`.
+- `To` is the agent SIP URI (`sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`). The agent answers first.
+- `From` is exactly `PHONEZERO_FROM_NUMBER` (E.164).
+- `{restaurant_phone}` inside `<Dial>` is E.164 only (US destination, already confirmed).
 - Recording is call-level (`Record` true, `RecordingChannels` `dual`). Do not put `record` on `<Dial>`.
-- Restaurant AMD is call-level (`MachineDetection` `Enable`, `AsyncAmd` true). Do not put AMD on `<Sip>` — that would classify the xAI agent, not the restaurant.
-- `Timeout` 30 is the ring timeout in seconds before no-answer. Do not raise it.
+- Do **not** send `MachineDetection` or `AsyncAmd`. In this shape they would classify the xAI agent (the `To` leg), which is useless. Voicemail is handled conversationally by the agent and classified from the transcript (§7 / §9).
+- Do **not** send `SendDigits`. It would apply to the agent `To` leg, not the restaurant. Restaurant IVR is handled conversationally or reported `needs_user`. Mid-call DTMF is not available.
+- `Timeout` 30 is the ring timeout in seconds waiting for the agent `To` to answer. Do not raise it.
 - `TimeLimit` 600s is the per-call duration cap. Do not raise it.
-- `AsyncAmd` must be `true`. Synchronous AMD blocks TeXML waiting for a status callback PhoneZero does not run. Read the AMD result post-hoc from `answered_by` on the retrieve-call endpoint (`human` | `machine` | `not_sure`): treat `machine` as voicemail, `not_sure` as human.
-- If the restaurant's reservations extension is known **and** the MCP tool schema includes `SendDigits`, add `"SendDigits": "ww2"` (or the known sequence; `w` = 500ms pause). Mid-call DTMF is not available in this architecture — if you do not know the extension, omit it.
 
 On success, store `sid` / `CallSid` as `call_sid`. On MCP/HTTP error: outcome `failed`. Do not retry in the same turn; tell the user what Telnyx returned (no secrets).
 
 ## 7. Poll for completion
 
-Poll the same MCP: `invoke_api_endpoint` with `endpoint_name` `retrieve_calls_accounts_texml_calls` and args `account_sid`, `call_sid` (REST equivalent: `GET /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Calls/{call_sid}`). Returns `status`, `duration`, and `answered_by`. Under async AMD, `answered_by` values `human` | `machine` | `not_sure` appear post-hoc.
+Poll the same MCP: `invoke_api_endpoint` with `endpoint_name` `retrieve_calls_accounts_texml_calls` and args `account_sid`, `call_sid` (REST equivalent: `GET /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Calls/{call_sid}`). Returns `status` and `duration`. Do not use `answered_by` — AMD is off; voicemail is classified from the transcript (agent reports leaving a message / a voicemail greeting or beep is present and no human turn → voicemail path per §5).
 
 This endpoint is eventually consistent.
 
@@ -186,8 +194,6 @@ This endpoint is eventually consistent.
 | `status` `completed` | Go to recordings. |
 | `status` `no-answer`, `busy` | Not a booking; apply §5 retry; report `no_answer` only when `attempts >= 2`. |
 | `status` `failed`, `canceled` | Outcome `failed` always. Never `booked`. Do not override from a transcript. If a transcript exists, quote it under `failed` only. |
-| `answered_by` `machine` | Still wait for `completed`, then treat as voicemail unless a **non-agent channel** (never merged text) contains a human turn; the recap alone never upgrades it. |
-| `answered_by` `human` or `not_sure` | Treat as human. `not_sure` is human. |
 
 Poll every 10s while live. **Call timeout:** 12 minutes from dial. If still `ringing` / `in-progress` at 12 minutes, stop polling the live call, try recordings once, and if nothing usable → `unknown` (never `booked`).
 
@@ -211,7 +217,7 @@ curl -sSg -X POST https://api.x.ai/v1/stt \
   -F file=@/tmp/phonezero-{call_sid}.audio
 ```
 
-5. The multichannel response includes a `channels` array (one transcript per speaker). Identify the **agent** channel as the one whose `text` contains the canonical opener ("calling on a recorded line" / "I'd like to make a reservation"). The other channel is the **host**. If `channels` is missing or the opener cannot identify the agent channel: outcome `unknown`, never `booked`.
+5. The recording includes the spoken briefing at the start. The multichannel response includes a `channels` array (one transcript per speaker). Identify the **agent** channel as the one whose `text` contains the canonical opener ("calling on a recorded line" / "I'd like to make a reservation") and/or the agent's restatement of the briefing. The channel that contains the briefing TTS (and not the opener) is the Telnyx/instruction side — not the host; do not treat briefing TTS as a host confirmation. Do not over-specify channel numbers. If `channels` is missing or the opener cannot identify the agent channel: outcome `unknown`, never `booked`.
 
 If STT fails or returns empty text: outcome `unknown`. Never `booked`. You may retry the call later under §5 (absence is not a booking).
 
@@ -266,8 +272,8 @@ Do not copy raw audio or full transcripts into chat. Quote only the recap line a
 
 There is no mid-call relay to you. Three tiers:
 
-1. **In-window / pre-briefed alternates (default).** Already in the TASK BRIEF. The agent accepts on the spot. You report `booked` at that time (host confirmation still required).
-2. **Out-of-window offer.** Agent must not accept. It asks the host to hold if possible, recaps `not booked` with the offered time. You report `needs_user`, show the offer in chat, and wait. If the user accepts, replace the TASK BRIEF for a **confirmation callback** (narrow ask: lock the held time) and run §4–§10 again. If they decline, stop (`unavailable`) or collect a new window.
+1. **In-window / pre-briefed alternates (default).** Already in the spoken brief. The agent accepts on the spot. You report `booked` at that time (host confirmation still required).
+2. **Out-of-window offer.** Agent must not accept. It asks the host to hold if possible, recaps `not booked` with the offered time. You report `needs_user`, show the offer in chat, and wait. If the user accepts, place a **confirmation callback** with a new spoken brief (narrow ask: lock the held time) and run §4–§10 again. If they decline, stop (`unavailable`) or collect a new window.
 3. **Live calendar tool mid-call** — not available. Do not pretend it is.
 
 ## 12. Report and calendar
@@ -287,4 +293,4 @@ Report in chat, one state, concrete facts:
 - No `booked` without a Telnyx recording and an xAI STT transcript that contains both the recap and a host confirmation.
 - No secrets, no keys in chat, no non-fixture numbers written into skills or examples.
 - One restaurant, one task, max two attempts, 20 minutes apart.
-- Never edit STATIC BEHAVIOR in Builder. Only replace TASK BRIEF.
+- Never edit the Builder prompt after setup. It is fully static. Brief each call by voice in TeXML `<Say>`, not in the console.

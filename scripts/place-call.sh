@@ -14,11 +14,13 @@
 #   Request schema is oneOf: Url XOR Texml XOR neither.
 #   https://developers.telnyx.com/api-reference/texml-rest-commands/initiate-an-outbound-call
 #
-# TeXML REST uses PascalCase JSON keys (To / From / Texml / MachineDetection).
-# ApplicationSid is required. Recording and restaurant AMD are call-level
-# (Record, RecordingChannels, MachineDetection, AsyncAmd) — not in the XML.
-# AMD on <Sip> would classify the xAI agent, not the restaurant.
-# https://developers.telnyx.com/docs/voice/programmable-voice/texml-answering-machine
+# Reversed flow (verified Aug 2026): To is the xAI agent SIP URI; Texml
+# Pause+Say(brief)+Dial(restaurant). MachineDetection/AsyncAmd are omitted
+# (they would classify the agent To-leg).
+#
+# TeXML REST uses PascalCase JSON keys (To / From / Texml).
+# ApplicationSid is required. Recording is call-level (Record,
+# RecordingChannels) — not in the XML.
 #
 # StatusCallback is omitted (zero-server).
 #
@@ -33,28 +35,31 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: place-call.sh [--dry-run] E.164_NUMBER
+Usage: place-call.sh [--dry-run] --brief TEXT E.164_RESTAURANT
 
-Place a TeXML outbound call to a US E.164 number and print the Call SID.
-To and PHONEZERO_FROM_NUMBER must match +1 and 10 digits (syntactic guard
-only — +1 includes Canada and Caribbean NANP; US confirmation is the
-caller's job). Inline Texml bridges the answered call to
-sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai.
+Place a TeXML call: To = the xAI agent SIP URI; Texml speaks --brief
+then dials the restaurant E.164. Prints the Call SID.
 
-  --dry-run   Print the request (API key redacted) without sending it.
+The restaurant number and PHONEZERO_FROM_NUMBER must match +1 and 10
+digits (syntactic guard only — +1 includes Canada and Caribbean NANP;
+US confirmation is the caller's job). --brief is XML-escaped by this
+script (& < >) before it is placed in <Say>.
+
+  --brief TEXT   Spoken task briefing (required; plain facts)
+  --dry-run      Print the request (API key redacted) without sending it
 
 Required environment:
   TELNYX_API_KEY
   PHONEZERO_FROM_NUMBER              E.164 caller ID on the Telnyx account
-  PHONEZERO_XAI_SIP_NUMBER           E.164 registered with xAI (byo_trunk)
+  PHONEZERO_XAI_SIP_NUMBER           E.164 registered with xAI (byo_trunk); To target
   PHONEZERO_TEXML_APP_ID             TeXML Application id (ApplicationSid)
 
 Optional / auto-resolved:
   TELNYX_ACCOUNT_SID                 if unset, GET /v2/whoami → data.organization_id
 
 Example (fixture number only):
-  place-call.sh +15555550100
-  place-call.sh --dry-run +15555550100
+  place-call.sh --brief "Task briefing for PhoneZero. Restaurant: Joe's Pizza. Party of 2." +15555550100
+  place-call.sh --dry-run --brief "test brief" +15555550100
 EOF
 }
 
@@ -118,35 +123,44 @@ print(org.strip())
   echo "resolved TELNYX_ACCOUNT_SID via /v2/whoami (${TELNYX_ACCOUNT_SID:0:8}…)"
 }
 
-# Build inline Texml from texml/bridge.xml: substitute the SIP number,
-# strip comments and whitespace. Fallback: the proven minimal string.
-# https://developers.telnyx.com/api-reference/texml-rest-commands/initiate-an-outbound-call
+xml_escape() {
+  python3 -c '
+import os
+from xml.sax.saxutils import escape
+print(escape(os.environ["PHONEZERO_TASK_BRIEF_RAW"], {"\"": "&quot;", "\x27": "&apos;"}))
+'
+}
+
+# Build inline Texml from texml/bridge.xml: substitute escaped brief and
+# restaurant E.164, strip comments and whitespace. Fallback: proven shape.
 build_texml() {
   python3 -c '
 import os, re
 from pathlib import Path
-sip = os.environ["PHONEZERO_XAI_SIP_NUMBER"]
+brief = os.environ["PHONEZERO_TASK_BRIEF_ESC"]
+rest = os.environ["PHONEZERO_RESTAURANT"]
 minimal = (
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
     "<Response>"
-    "<Dial answerOnBridge=\"true\" timeLimit=\"600\">"
-    "<Sip>sip:%s@sip.voice.x.ai;transport=tls</Sip>"
-    "</Dial>"
+    "<Pause length=\"1\"/>"
+    "<Say>%s</Say>"
+    "<Dial answerOnBridge=\"true\" timeLimit=\"600\">%s</Dial>"
     "</Response>"
-) % sip
+) % (brief, rest)
 path = os.environ.get("PHONEZERO_BRIDGE_XML") or ""
 if not path or not Path(path).is_file():
     print(minimal)
     raise SystemExit(0)
 xml = Path(path).read_text(encoding="utf-8")
 xml = re.sub(r"<!--.*?-->", "", xml, flags=re.DOTALL)
-xml = xml.replace("{PHONEZERO_XAI_SIP_NUMBER}", sip)
+xml = xml.replace("{PHONEZERO_TASK_BRIEF}", brief)
+xml = xml.replace("{RESTAURANT_E164}", rest)
 xml = "".join(line.strip() for line in xml.splitlines())
 xml = re.sub(r">\s+<", "><", xml)
-if "{PHONEZERO_XAI_SIP_NUMBER}" in xml:
-    raise SystemExit("error: unsubstituted {PHONEZERO_XAI_SIP_NUMBER} in Texml")
-if "sip.voice.x.ai" not in xml or "<Sip>" not in xml:
-    raise SystemExit("error: Texml missing Sip / sip.voice.x.ai after substitution")
+if "{PHONEZERO_TASK_BRIEF}" in xml or "{RESTAURANT_E164}" in xml:
+    raise SystemExit("error: unsubstituted placeholder in Texml")
+if "<Say>" not in xml or "<Dial" not in xml:
+    raise SystemExit("error: Texml missing Say / Dial after substitution")
 print(xml)
 '
 }
@@ -166,16 +180,8 @@ print(json.dumps({
     # Dual-channel recording is call-level (not a Dial attribute).
     "Record": True,
     "RecordingChannels": "dual",
-    # Restaurant-leg AMD. Enable = classify as soon as machine is identified.
-    # https://developers.telnyx.com/docs/voice/programmable-voice/texml-answering-machine
-    "MachineDetection": "Enable",
-    # AsyncAmd MUST be true. Sync AMD (default false) blocks TeXML until a
-    # StatusCallback can return new instructions — PhoneZero has no server,
-    # so sync would stall the SIP bridge. The AMD verdict lands on
-    # answered_by of the call-fetch endpoint (human | machine | not_sure).
-    # https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-a-call
-    "AsyncAmd": True,
-    # Seconds to wait for the restaurant to answer. Range 5–120.
+    # No MachineDetection / AsyncAmd: they would classify the agent To-leg.
+    # Seconds to wait for the agent To to answer. Range 5–120.
     "Timeout": 30,
     # Max call duration in seconds. Range 30–14400, default 14400.
     "TimeLimit": 600,
@@ -215,7 +221,8 @@ sys.exit(1)
 }
 
 DRY_RUN=0
-TO=""
+RESTAURANT=""
+BRIEF=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -227,6 +234,14 @@ while [ $# -gt 0 ]; do
       DRY_RUN=1
       shift
       ;;
+    --brief)
+      if [ $# -lt 2 ]; then
+        echo "error: --brief requires a value" >&2
+        exit 2
+      fi
+      BRIEF="$2"
+      shift 2
+      ;;
     --)
       shift
       break
@@ -237,24 +252,24 @@ while [ $# -gt 0 ]; do
       exit 2
       ;;
     *)
-      if [ -n "$TO" ]; then
+      if [ -n "$RESTAURANT" ]; then
         echo "error: unexpected extra argument: $1" >&2
         usage >&2
         exit 2
       fi
-      TO="$1"
+      RESTAURANT="$1"
       shift
       ;;
   esac
 done
 
-if [ -z "$TO" ]; then
+if [ -z "$RESTAURANT" ] || [ -z "$BRIEF" ]; then
   usage >&2
   exit 2
 fi
 
-if ! is_us_e164 "$TO"; then
-  echo "error: destination must be a US E.164 number (+1 and 10 digits, e.g. +15555550100)" >&2
+if ! is_us_e164 "$RESTAURANT"; then
+  echo "error: restaurant must be a US E.164 number (+1 and 10 digits, e.g. +15555550100)" >&2
   exit 2
 fi
 
@@ -285,7 +300,11 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PHONEZERO_BRIDGE_XML="${SCRIPT_DIR}/../texml/bridge.xml"
-export PHONEZERO_TO="$TO"
+export PHONEZERO_RESTAURANT="$RESTAURANT"
+export PHONEZERO_TASK_BRIEF_RAW="$BRIEF"
+PHONEZERO_TASK_BRIEF_ESC="$(xml_escape)"
+export PHONEZERO_TASK_BRIEF_ESC
+export PHONEZERO_TO="sip:${PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls"
 PHONEZERO_TEXML="$(build_texml)"
 export PHONEZERO_TEXML
 

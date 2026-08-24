@@ -52,17 +52,17 @@
       "PHONEZERO_XAI_SIP_NUMBER": {
         "type": "string",
         "title": "xAI Direct SIP number",
-        "description": "E.164 number registered with xAI as byo_trunk — usually the same number as PHONEZERO_FROM_NUMBER (no second number required). Substituted into the inline TeXML SIP URI at call time (sip:{this}@sip.voice.x.ai;transport=tls). Fixture example: +15555550101."
+        "description": "E.164 number registered with xAI as byo_trunk — usually the same number as PHONEZERO_FROM_NUMBER (no second number required). Call-create To target: sip:{this}@sip.voice.x.ai;transport=tls (the agent answers first). Fixture example: +15555550101."
       },
       "PHONEZERO_AGENT_NAME": {
         "type": "string",
         "title": "Voice agent name",
-        "description": "Spoken name in the voice-agent opener (Hello, this is {agent_name}…)."
+        "description": "Spoken name. Substituted once into the Builder prompt at agent creation ({agent_name}) and spoken in each call's task brief."
       },
       "PHONEZERO_DISCLOSE_AI": {
         "type": "boolean",
         "title": "Disclose automated assistant",
-        "description": "When true, the opener includes the automated-assistant clause. Default on (EU AI Act disclosure norms). The agent always answers truthfully if asked whether it is an AI.",
+        "description": "When true, the Builder prompt (substituted once at agent creation) includes the automated-assistant clause. Default on (EU AI Act disclosure norms). Also stated in each spoken brief. The agent always answers truthfully if asked whether it is an AI.",
         "default": true
       }
     },
