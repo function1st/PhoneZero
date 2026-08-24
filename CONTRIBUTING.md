@@ -4,7 +4,7 @@
 
 1. Fork and clone. Do not put real keys or numbers in the tree.
 2. Read [docs/PLAN.md](docs/PLAN.md) and [docs/SETUP.md](docs/SETUP.md). The skill, voice prompt, and inline TeXML template are the product; this repo's packaging is the marketplace wrapper.
-3. Install the plugin locally (or point Grok Bot at your branch) and fill the plugin variables from `.cursor-plugin/plugin.json` on a dedicated Telnyx account. Enter `XAI_API_KEY` via Grok Bot's secure secret request flow (not a plugin variable; runtime: `POST https://api.x.ai/v1/stt`; setup: `GET`/`POST`/`PATCH https://api.x.ai/v2/phone-numbers`). Use fixture numbers in docs and fixtures only (`+15555550100`-style).
+3. Install the plugin from your branch's repo URL (pointing Grok Bot at the branch only routes it to the skill — the plugin install is still required for the Telnyx MCP and variables) and fill the plugin variables from `.cursor-plugin/plugin.json` on a dedicated Telnyx account. Enter `XAI_API_KEY` via Grok Bot's secure secret request flow (not a plugin variable; runtime: `POST https://api.x.ai/v1/stt`; setup: `GET`/`POST`/`PATCH https://api.x.ai/v2/phone-numbers`). Use fixture numbers in docs and fixtures only (`+15555550100`-style).
 4. Run `scripts/setup-check.sh` after any TeXML, SIP, or Builder change.
 5. CI must stay green: secret scan, `shellcheck` on `scripts/*.sh`, `xmllint --noout` on `texml/*.xml`, and the phone-number guard.
 

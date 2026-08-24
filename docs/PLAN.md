@@ -4,11 +4,11 @@
 
 Adoption contract:
 
-0. Or point a Grok Bot at this repository URL (`AGENTS.md` routes it).
+0. Or point a Grok Bot at this repository URL (`AGENTS.md` routes it). The plugin still gets installed from this repo URL so the Telnyx MCP and plugin variables exist — never export `TELNYX_API_KEY` onto the Bot computer.
 1. Sign up for a Telnyx account and an xAI developer account. Complete Telnyx KYC and buy one US DID.
 2. Install the PhoneZero plugin (Marketplace, or from the repo URL until the listing exists).
 3. **Keys first**: enter `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_XAI_SIP_NUMBER` (= FROM), `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI` in Plugins → Configure; `XAI_API_KEY` via secure secret request. Leave `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` empty.
-4. Ask Grok Bot: *"Set up phone calling."* (Or run `scripts/provision.sh`.) Copy the printed ids into the two remaining variables.
+4. Ask Grok Bot: *"Set up phone calling."* (Or run `scripts/provision.sh` — developer-only, on a personal machine that may hold keys, never the Bot computer.) Copy the printed ids into the two remaining variables.
 5. Ask Grok Bot: *"Book me a table for 2 at Joe's Pizza Friday around 7."*
 
 Personal use, single user. Open-source (Apache-2.0), distributed through the Grok Bot / Cursor plugin marketplace.
@@ -177,7 +177,7 @@ Hygiene from commit one (history becomes public): no secret ever committed, secr
 
 ## Test strategy
 
-- Prompt/TeXML lint; `setup-check.sh` asserting the configuration invariants it can see (auth, whoami SID, FROM on account, TeXML app active, `connection_id` match, optional xAI `byo_trunk` check when `XAI_API_KEY` is set). Does **not** check bin content. Does **not** verify that the agent answers.
+- Prompt/TeXML lint; `setup-check.sh` asserting the configuration invariants it can see (auth, whoami SID, FROM on account, TeXML app active, `connection_id` match, optional xAI `byo_trunk` check when `XAI_API_KEY` is set). Does **not** verify that the agent answers.
 - Persona checklist (Phase 2) as the recurring regression suite — rerun after any prompt change.
 - E2E gates: my own phone → persona harness → a real restaurant.
 

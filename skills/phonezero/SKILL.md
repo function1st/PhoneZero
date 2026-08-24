@@ -36,7 +36,7 @@ Do not invent `{TELNYX_ACCOUNT_SID}`.
 
 ## Setup (when the user says *Set up phone calling*)
 
-Human/developer mirrors: `docs/SETUP.md` and `scripts/provision.sh`. Telnyx account + KYC + buying the DID stay manual. Telnyx API steps go through the Telnyx MCP (`list_api_endpoints` → `get_api_endpoint_schema` → `invoke_api_endpoint`). xAI API steps use `XAI_API_KEY` from the environment (secure-secret flow — never ask for it in chat).
+Human/developer mirrors: `docs/SETUP.md`, and `scripts/provision.sh` — developer-only, run on a personal machine that may hold keys, never on this computer. Telnyx account + KYC + buying the DID stay manual. Telnyx API steps go through the Telnyx MCP (`list_api_endpoints` → `get_api_endpoint_schema` → `invoke_api_endpoint`). xAI API steps use `XAI_API_KEY` from the environment (secure-secret flow — never ask for it in chat).
 
 **Keys first (or the MCP cannot run).** `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` are filled in *after* this recipe; they are not required to install the plugin. Confirm these are already saved: `TELNYX_API_KEY` (plugin variable — MCP works once it is saved), `PHONEZERO_FROM_NUMBER`, `PHONEZERO_XAI_SIP_NUMBER` (= FROM), `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI`, and `XAI_API_KEY` (env). If `TELNYX_API_KEY` is missing, send the user to Plugins → Configure. If `XAI_API_KEY` is missing, start the secure secret request. Then, field-for-field:
 
@@ -243,7 +243,7 @@ Read the **closing lines** of the agent channel for that sentence. Then independ
 3. The recap's `{time}` is inside the approved window or the pre-briefed alternates.
 4. Recording exists and xAI STT returned a transcript.
 5. The confirming turn is not briefing TTS and not a voicemail greeting/beep/"leave a message" — a live human turn is required.
-6. The recording contains a complete briefing (restaurant, party, date, window at minimum). Missing or garbled brief → never `booked`.
+6. The recording contains a complete briefing (restaurant, party, date, preferred time, window, and booking name at minimum). Missing or garbled brief → never `booked`.
 
 The agent's recap alone is not enough. If the recap says `booked` but the host never confirmed, classify `unknown` and say so. Never invent a confirmation number or a time that is not in the transcript.
 
@@ -300,7 +300,7 @@ Report in chat, one state, concrete facts:
 ## Hard rules
 
 - No call without §1 call-time variables, a complete collect, an online-booking attempt, an hours check, and an explicit yes to the current plan.
-- No `booked` without a Telnyx recording and an xAI STT transcript that contains both the recap and a host confirmation.
+- No `booked` unless all six gates in §9 hold (recording + transcript, `booked` recap, live host confirmation that is not briefing TTS or voicemail, in-window time, complete briefing).
 - No secrets, no keys in chat, no non-fixture numbers written into skills or examples.
 - One restaurant, one task, max two attempts, 20 minutes apart.
 - Never edit the Builder prompt after setup. It is fully static. Brief each call by voice in TeXML `<Say>`, not in the console.

@@ -2,7 +2,7 @@
 
 This is the human-readable version of what Grok Bot automates when you ask *"Set up phone calling."* Approve each credentialed step. UIs move; the invariants are a US DID, that same DID registered with xAI as `byo_trunk`, a TeXML application whose `voice_url` is the inbound reject page (outbound calls carry **inline Texml**, not a hosted bin), a Builder voice agent attached to that number, spend caps on both vendors, the Telnyx key stored only as a Cursor plugin variable, and `XAI_API_KEY` entered once via Grok Bot's secure secret request. Runtime: `POST https://api.x.ai/v1/stt`. Setup: `GET`/`POST`/`PATCH https://api.x.ai/v2/phone-numbers`. Telnyx cannot transcribe Dial-verb recordings; the outcome path is recording `media_url` via Telnyx MCP → xAI `POST /v1/stt` (multichannel).
 
-Fixture numbers in this guide are reserved (`+15555550100`-style). Never commit a real number. You do **not** buy a second number: `PHONEZERO_XAI_SIP_NUMBER` is normally the **same** DID as `PHONEZERO_FROM_NUMBER`, registered with xAI. A distinct fixture such as `+15555550101` is only an example value.
+Fixture numbers in this guide are reserved (`+15555550100`-style). Never commit a real number. You do **not** buy a second number: `PHONEZERO_XAI_SIP_NUMBER` is the **same** DID as `PHONEZERO_FROM_NUMBER`, registered with xAI.
 
 `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` are created during provision — they are **not** required to install the plugin. Enter keys first (A), provision (B), then paste the remaining ids (C).
 

@@ -14,7 +14,7 @@ Task briefing for PhoneZero. This is an automated briefing, not a restaurant. Di
 
 Callee fixture: `+15555550100`. Evaluator phone is this DID or a SIP stand-in labeled the same.
 
-`booked` is valid only when (1) the recap says `booked` and (2) a host turn confirms the read-back. Agent recap alone fails the scenario.
+`booked` is valid only when all six gates in SKILL.md §9 hold — recap says `booked`, a live host turn (not briefing TTS, not voicemail) confirms the read-back, the time is in-window, and the recording contains a complete briefing (restaurant, party, date, preferred time, window, booking name). Agent recap alone fails the scenario.
 
 ---
 
@@ -180,7 +180,7 @@ Must not contain `Confirming: booked`.
 
 ## 11. Briefing integrity
 
-**Host script.** (Evaluator: place the call with **no** spoken brief, or a garbled/incomplete brief that omits restaurant, party, date, or window.) If the agent still tries to book, play a willing host: "Sure, 7 for two, Alex Example, you're down."
+**Host script.** (Evaluator: place the call with **no** spoken brief, or a garbled/incomplete brief that omits restaurant, party, date, preferred time, window, or booking name.) If the agent still tries to book, play a willing host: "Sure, 7 for two, Alex Example, you're down."
 
 **Expected agent.** Absorb nothing as a restaurant. Do not improvise a reservation. Politely end the call. No read-back of a booking. Recap `not booked` if the agent had an audio turn it controlled; otherwise silence is acceptable.
 
