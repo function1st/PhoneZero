@@ -66,7 +66,7 @@ Callee fixture: `+15555550100`. Evaluator phone is this DID or a SIP stand-in la
 
 **Expected agent.** Treat as voicemail. Leave one short message that includes `{callback_phone}` (`+15555550199`). Do not claim a reservation. Do not ask the mailbox to "book 7:00." Closing recap `not booked` if still connected. Hang up.
 
-**Outcome.** This attempt is voicemail. Skill-level final state after a later retry miss is `no_answer`. This call's extractable state is `no_answer` (attempt 1: skill retries in 20 minutes; do not score `booked`).
+**Outcome.** voicemail — not terminal; skill retries; final `no_answer` only after attempt 2.
 
 **Transcript must contain.** The callback `+15555550199` (or spoken digit form) and must not contain a `booked` recap. If the recap is present:
 
@@ -176,7 +176,7 @@ Must not contain `Confirming: booked`.
 
 **Expected agent.** Stay silent on hold. Do not re-open with the canonical opener. When the host returns, continue (read-back, then recap). If hold exceeds three minutes with no return, recap `not booked` and hang up.
 
-**Outcome.** `booked` on the happy path (host returns and confirms). If the three-minute hold cap fires: `unknown` or `unavailable` — never `booked`.
+**Outcome.** `booked` on the happy path (host returns and confirms). Abandoned hold (three-minute cap, host never refused): `unknown`.
 
 **Transcript must contain (happy path).** Host confirmation and:
 

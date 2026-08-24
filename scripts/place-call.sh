@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Developer tool for a personal machine that is allowed to hold API keys. The
+# Grok Bot production path uses the Telnyx hosted MCP and never exports
+# TELNYX_API_KEY into its environment.
+#
 # place-call.sh — curl equivalent of the Telnyx hosted MCP dial.
 #
 # Production path is the Telnyx hosted MCP. This script POSTs the same
@@ -29,7 +33,8 @@ usage() {
   cat <<'EOF'
 Usage: place-call.sh [--dry-run] E.164_NUMBER
 
-Place a TeXML outbound call to E.164_NUMBER and print the returned Call SID.
+Place a TeXML outbound call to a US E.164 number and print the Call SID.
+To and PHONEZERO_FROM_NUMBER must match +1 and 10 digits (v1 is US-only).
 
   --dry-run   Print the request (API key redacted) without sending it.
 
@@ -46,10 +51,13 @@ Example (fixture number only):
 EOF
 }
 
-# E.164: + then country code (1–9) then 7–14 more digits (8–15 digits total).
-# https://www.itu.int/rec/T-REC-E.164
-is_e164() {
-  [[ "$1" =~ ^\+[1-9][0-9]{7,14}$ ]]
+# US E.164 only (v1 ships US-only). +1 and exactly 10 more digits.
+is_us_e164() {
+  [[ "$1" =~ ^\+1[0-9]{10}$ ]]
+}
+
+urlencode() {
+  VAL="$1" python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["VAL"], safe=""))'
 }
 
 require_env() {
@@ -90,8 +98,9 @@ print(json.dumps({
     # enum: human | machine | not_sure), not on a webhook.
     # https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-a-call
     "AsyncAmd": True,
-    # Seconds to wait for the restaurant to answer. Range 5–120, default 30.
-    "Timeout": 45,
+    # Seconds to wait for the restaurant to answer. Range 5–120.
+    # SKILL.md is canonical: Timeout is 30.
+    "Timeout": 30,
     # Max call duration in seconds. Range 30–14400, default 14400.
     "TimeLimit": 600,
 }, separators=(",", ":")))
@@ -168,8 +177,8 @@ if [ -z "$TO" ]; then
   exit 2
 fi
 
-if ! is_e164 "$TO"; then
-  echo "error: destination must be E.164 (e.g. +15555550100)" >&2
+if ! is_us_e164 "$TO"; then
+  echo "error: destination must be a US E.164 number (+1 and 10 digits, e.g. +15555550100)" >&2
   exit 2
 fi
 
@@ -179,8 +188,8 @@ require_env PHONEZERO_FROM_NUMBER
 require_env PHONEZERO_TEXML_BIN_URL
 require_env PHONEZERO_TEXML_APP_ID
 
-if ! is_e164 "$PHONEZERO_FROM_NUMBER"; then
-  echo "error: PHONEZERO_FROM_NUMBER must be E.164 (e.g. +15555550100)" >&2
+if ! is_us_e164 "$PHONEZERO_FROM_NUMBER"; then
+  echo "error: PHONEZERO_FROM_NUMBER must be a US E.164 number (+1 and 10 digits, e.g. +15555550100)" >&2
   exit 2
 fi
 
@@ -196,9 +205,10 @@ fi
 
 export PHONEZERO_TO="$TO"
 PAYLOAD="$(build_payload)"
-# account_sid path param:
+# account_sid path param (URL-encoded):
 # https://developers.telnyx.com/api-reference/texml-rest-commands/initiate-an-outbound-call
-URL="https://api.telnyx.com/v2/texml/Accounts/${TELNYX_ACCOUNT_SID}/Calls"
+ACCOUNT_SID_ENC="$(urlencode "$TELNYX_ACCOUNT_SID")"
+URL="https://api.telnyx.com/v2/texml/Accounts/${ACCOUNT_SID_ENC}/Calls"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "POST ${URL}"

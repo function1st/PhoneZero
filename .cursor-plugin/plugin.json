@@ -2,7 +2,7 @@
   "name": "phonezero",
   "displayName": "PhoneZero",
   "version": "0.1.0",
-  "description": "Give your Grok Bot a phone for reservations and phone errands — zero infrastructure.",
+  "description": "Give your Grok Bot a phone for restaurant-reservation calling — zero infrastructure.",
   "author": {
     "name": "Function1st"
   },
@@ -17,7 +17,7 @@
     "calling",
     "mcp"
   ],
-  "skills": "skills/phonezero",
+  "skills": "./skills/phonezero",
   "mcpServers": {
     "telnyx": {
       "url": "https://api.telnyx.com/v2/mcp",

@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
+# Developer tool for a personal machine that is allowed to hold API keys. The
+# Grok Bot production path uses the Telnyx hosted MCP and never exports
+# TELNYX_API_KEY into its environment.
+#
 # setup-check.sh — preflight the PhoneZero Telnyx configuration invariants.
 #
-# Checks (exit non-zero on any failure; never echo secrets):
-#   1. TELNYX_API_KEY authenticates (cheap GET /v2/balance)
-#   2. PHONEZERO_FROM_NUMBER exists on the account
-#   3. The TeXML application exists
-#   4. The TeXML bin URL fetches and contains <Dial> and sip.voice.x.ai
+# This script verifies exactly:
+#   - TELNYX_API_KEY authenticates (GET /v2/balance)
+#   - PHONEZERO_FROM_NUMBER exists on the account
+#   - the TeXML application exists and is active
+#   - the TeXML bin URL GETs and contains <Dial>, <Sip>, sip.voice.x.ai,
+#     and no leftover {PHONEZERO_XAI_SIP_NUMBER} token
+# It does NOT verify xAI SIP registration or that the agent answers.
 #
 # Verified endpoints:
 #   GET /v2/balance
@@ -22,6 +28,7 @@
 #
 # Required env (never echoed):
 #   TELNYX_API_KEY
+#   TELNYX_ACCOUNT_SID
 #   PHONEZERO_FROM_NUMBER
 #   PHONEZERO_TEXML_APP_ID
 #   PHONEZERO_TEXML_BIN_URL
@@ -34,8 +41,15 @@ Usage: setup-check.sh
 Verify PhoneZero Telnyx configuration. Prints a checklist. Exits non-zero
 if any check fails. Never prints TELNYX_API_KEY.
 
+Verifies: auth works; FROM number on account; TeXML app exists/active;
+bin URL GETs and contains <Dial>, <Sip>, sip.voice.x.ai, and no leftover
+{PHONEZERO_XAI_SIP_NUMBER} token.
+
+Does NOT verify xAI SIP registration or that the agent answers.
+
 Required environment:
   TELNYX_API_KEY
+  TELNYX_ACCOUNT_SID
   PHONEZERO_FROM_NUMBER              E.164 DID on the account (e.g. +15555550100)
   PHONEZERO_TEXML_APP_ID             TeXML Application id
   PHONEZERO_TEXML_BIN_URL            public TeXML Bin URL
@@ -91,8 +105,16 @@ fi
 
 echo "PhoneZero setup check"
 echo "====================="
+echo "Verifies: auth works; FROM number on account; TeXML app exists/active;"
+echo "bin URL GETs and contains <Dial>, <Sip>, sip.voice.x.ai, and no leftover"
+echo "{PHONEZERO_XAI_SIP_NUMBER} token."
+echo "Does NOT verify xAI SIP registration or that the agent answers."
+echo
 
 if ! require_env TELNYX_API_KEY; then
+  FAILS=$((FAILS + 1))
+fi
+if ! require_env TELNYX_ACCOUNT_SID; then
   FAILS=$((FAILS + 1))
 fi
 if ! require_env PHONEZERO_FROM_NUMBER; then
@@ -278,6 +300,10 @@ else
 fi
 
 echo
+echo "Scope: auth works; FROM number on account; TeXML app exists/active;"
+echo "bin URL GETs and contains <Dial>, <Sip>, sip.voice.x.ai, and no leftover"
+echo "{PHONEZERO_XAI_SIP_NUMBER} token."
+echo "Not verified: xAI SIP registration; agent answers."
 if [ "$FAILS" -gt 0 ]; then
   echo "Result: ${FAILS} failure(s)"
   exit 1

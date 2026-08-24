@@ -13,7 +13,7 @@
   Setup-time placeholder:
     {PHONEZERO_XAI_SIP_NUMBER}
       The xAI Voice Agent SIP-connected number (user/digits only, no sip:
-      prefix). Example fixture after substitution: +15555550199
+      prefix). Example fixture after substitution: +15555550101
 
   Verified against:
     https://developers.telnyx.com/docs/voice/programmable-voice/texml-verbs/dial

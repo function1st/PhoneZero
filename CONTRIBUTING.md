@@ -10,16 +10,7 @@
 
 ## Regression suite
 
-The persona checklist is the regression suite. After any change to `prompts/voice-agent.md` or call-flow rules in `skills/phonezero/SKILL.md`, re-run the live scenarios in [docs/PERSONAS.md](docs/PERSONAS.md):
-
-- Busy host
-- IVR
-- Voicemail (AMD)
-- "We're full"
-- Counter-offer inside the window
-- Counter-offer outside the window
-
-Assert the spoken recap is correct each time. Prompt/TeXML lint and `setup-check.sh` are the cheap gates; personas are the quality gate.
+The persona checklist is the regression suite. After any change to `prompts/voice-agent.md` or call-flow rules in `skills/phonezero/SKILL.md`, re-run **all scenarios** in [docs/PERSONAS.md](docs/PERSONAS.md). Assert the spoken recap is correct each time. Prompt/TeXML lint and `setup-check.sh` are the cheap gates; personas are the quality gate.
 
 ## Pull requests
 

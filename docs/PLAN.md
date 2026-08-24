@@ -1,6 +1,6 @@
 # PhoneZero — Implementation Plan
 
-**PhoneZero** gives [Grok Bot](https://x.ai/news/introducing-grok-bot) a phone: ask a Bot to book a restaurant table, and a Grok voice agent dials the restaurant, negotiates with the host, and the Bot confirms the outcome back in chat (`booked @ 7:15pm` / `full, offered 8:15` / `no answer`). The name is the pitch: **zero infrastructure** — no servers, no deployment, nothing to host.
+**PhoneZero** gives [Grok Bot](https://x.ai/news/introducing-grok-bot) a phone: ask a Bot to book a restaurant table, and a Grok voice agent dials the restaurant, negotiates with the host, and the Bot confirms the outcome back in chat. Valid outcome states are exactly `booked | unavailable | no_answer | needs_user | unknown | failed`. The name is the pitch: **zero infrastructure** — no servers, no deployment, nothing to host.
 
 Adoption contract:
 
@@ -22,8 +22,8 @@ Grok Bot (its own cloud computer)
   │ 2. presents the call plan in chat; on my yes:
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
-Telnyx dials restaurant (recorded, AMD on) ──(answered)──▶
-TeXML Bin bridges the call to sip:{number}@sip.voice.x.ai
+Telnyx dials restaurant (recorded; async AMD on the dial request) ──(answered)──▶
+TeXML Bin bridges the call to sip:{number}@sip.voice.x.ai;transport=tls
                                   ▼
                   xAI Voice Agent (Builder-configured)
                   negotiates within the window · closing spoken recap
@@ -42,7 +42,7 @@ transcribes it (xAI POST /v1/stt, multichannel)
 | Orchestration | **Grok Bot** guided by `skills/phonezero/SKILL.md` | Plans, confirms, dials, polls, reads, retries, reports in chat |
 | Human audit trail | Builder console (recordings, transcripts, tool traces per call) | Review only — never on the Bot's critical path |
 
-Confirmed constraint shaping this design: **xAI exposes no API (documented or credibly undocumented) for retrieving Builder call transcripts or audio** — the complete docs surface has no such endpoint, and the deepest community project on this stack ([dial-a-repo](https://github.com/zeke/dial-a-repo)) had to scrape its own logs for past transcripts. Hence the Telnyx-side transcript. If xAI ships a call-log API, swapping it in is a one-step skill change.
+Confirmed constraint shaping this design: **xAI exposes no API (documented or credibly undocumented) for retrieving Builder call transcripts or audio** — the complete docs surface has no such endpoint, and the deepest community project on this stack ([dial-a-repo](https://github.com/zeke/dial-a-repo)) had to scrape its own logs for past transcripts. Hence the Telnyx-fetched recording transcribed with xAI STT. If xAI ships a call-log API, swapping it in is a one-step skill change.
 
 ### Secrets model — no keys on the Bot's computer
 
@@ -82,7 +82,7 @@ There is no live relay from the voice agent back to the Bot in the zero-server a
 
 ## Data & artifacts
 
-No database. Per call: Telnyx recording + transcription (REST-retrievable, deleted by the skill after the outcome is confirmed), the Bot's chat report, and Builder console records for human review. Task memory (what was booked, retry state) lives in the Bot's own conversation/memory like any other delegated work.
+No database. Per call: Telnyx dual-channel recording (REST-retrievable; the skill transcribes it with xAI STT, then deletes the local audio and the Telnyx recording once the outcome is confirmed), the Bot's chat report, and Builder console records for human review. Task memory (what was booked, retry state) lives in the Bot's own conversation/memory like any other delegated work.
 
 ## Costs
 
@@ -108,14 +108,20 @@ Patterns adopted: plan-first confirmation before any dial (CALL-E's confirm-toke
 ## Repo layout
 
 ```
-skills/phonezero/SKILL.md   the product: setup + per-call flow for the Bot
-prompts/voice-agent.md      Voice Agent Builder system prompt
-texml/bridge.xml            the TeXML Bin content (one <Dial><Sip> bridge)
-scripts/setup-check.sh      verifies TeXML app, bin, SIP registration, agent reachable
-docs/SETUP.md               human-readable version of what the Bot automates
+skills/phonezero/SKILL.md   the product: preconditions, collect, plan-first confirm,
+                            dial, poll, STT, outcome extraction, delete, report
+prompts/voice-agent.md      Builder system prompt (STATIC BEHAVIOR + TASK BRIEF sections)
+texml/bridge.xml            the TeXML Bin content (one <Dial><Sip> bridge, dual recording)
+scripts/place-call.sh       developer-only curl equivalent of the MCP dial
+scripts/get-outcome.sh      developer-only poll → recording → xAI STT → cleanup
+scripts/setup-check.sh      developer-only preflight (auth, DID, TeXML app, bin content;
+                            does NOT verify xAI SIP registration or that the agent answers)
+docs/SETUP.md               numbered human setup guide
+docs/PERSONAS.md            persona eval checklist (the regression suite)
 docs/PLAN.md                this plan
-.cursor-plugin/plugin.json  manifest: Telnyx MCP config + variables (TELNYX_API_KEY,
-                            PHONEZERO_FROM_NUMBER, TeXML app/bin IDs) + the skill
+README.md · SECURITY.md · CONTRIBUTING.md · LICENSE
+.github/workflows/ci.yml    gitleaks, shellcheck, xmllint, phone-number fixture guard
+.cursor-plugin/plugin.json  manifest: Telnyx hosted MCP config + variables schema + skill
 ```
 
 ## Marketplace & open-source requirements
@@ -128,7 +134,7 @@ Primary channel: **Grok Bot via the Cursor Marketplace** — Grok Bot uses Curso
 | **Grok Build plugin marketplace** | PR to [xai-org/plugin-marketplace](https://github.com/xai-org/plugin-marketplace) | Remote source pinned to a full 40-char commit SHA; reads `.cursor-plugin/` layouts, so the same repo works |
 | **Official MCP Registry** | n/a directly (PhoneZero ships no MCP server of its own — it configures Telnyx's) | — |
 
-Hygiene from commit one (history becomes public): no secret ever committed, secret scanning in CI, fixture numbers `+15555550100`-style, synthetic transcripts only, everything parameterized, README with the 3-step contract + architecture + costs + compliance section, `SECURITY.md`, `CONTRIBUTING.md`, Apache-2.0. Safety defaults: disclosure flag ON, calling-hours guard, attempt caps, recording deleted after outcome confirmation, US-default calling, no bulk-calling examples ever.
+Hygiene from commit one (history becomes public): no secret ever committed, secret scanning in CI, fixture numbers `+15555550100`-style, synthetic transcripts only, everything parameterized, README with the 3-step contract + architecture + costs + compliance section, `SECURITY.md`, `CONTRIBUTING.md`, Apache-2.0. Safety defaults: disclosure flag ON, calling-hours guard, attempt caps, recording deleted after outcome confirmation, US destinations only in v1, no bulk-calling examples ever.
 
 ## Compliance posture
 
@@ -144,12 +150,12 @@ Hygiene from commit one (history becomes public): no secret ever committed, secr
 - Prove the path by hand, zero code: console-created Builder agent + SIP-connected number + hand-made TeXML bin + one MCP/REST dial → the agent talks to me on my own phone.
 
 ### Phase 1 — Calling assets
-- `prompts/voice-agent.md` v1 (opener, negotiation rules, recap grammar); `texml/bridge.xml` with AMD and dual-channel recording; `scripts/setup-check.sh`.
-- Exercise the outcome loop: recording → Telnyx transcription → outcome extraction; validate speaker separation and recap detectability. Compare against the optional xAI-STT variant once.
+- `prompts/voice-agent.md` v1 (opener, negotiation rules, recap grammar); `texml/bridge.xml` with dual-channel recording (restaurant AMD lives on the REST/MCP dial request, async mode); developer scripts.
+- Exercise the outcome loop: recording `media_url` → xAI STT (multichannel) → outcome extraction; validate speaker separation and recap detectability.
 
 ### Phase 2 — Call quality
-- Persona eval checklist against the live agent (busy host, IVR, voicemail, "we're full", counter-offer in and out of window): scripted scenarios I answer myself, asserting the recap is correct each time.
-- Known-extension IVRs via `send_digits_on_answer`; document that mid-call IVR digit-pressing is not possible in this architecture (appendix restores it).
+- Persona eval checklist against the live agent (all scenarios in `docs/PERSONAS.md`): scripted scenarios I answer myself, asserting the recap and outcome state are correct each time.
+- Known-extension IVRs via `SendDigits` on the dial request (only if the MCP tool schema exposes it); document that mid-call IVR digit-pressing is not possible in this architecture (appendix restores it).
 - Tune Builder guardrails; verify console artifacts for human review.
 
 ### Phase 3 — The skill
@@ -163,7 +169,7 @@ Hygiene from commit one (history becomes public): no secret ever committed, secr
 
 ## Test strategy
 
-- Prompt/TeXML lint; `setup-check.sh` asserting the configuration invariants (bin content, SIP registration, agent answers).
+- Prompt/TeXML lint; `setup-check.sh` asserting the configuration invariants it can see (auth, DID, TeXML app, bin content — not xAI SIP registration or agent answering, which only the test call proves).
 - Persona checklist (Phase 2) as the recurring regression suite — rerun after any prompt change.
 - E2E gates: my own phone → persona harness → a real restaurant.
 
@@ -175,7 +181,7 @@ Hygiene from commit one (history becomes public): no secret ever committed, secr
 | Agent invents a confirmation | Recap + verbatim read-back required; the Bot reports `booked` only when the transcript shows the host confirming; console audio as final arbiter |
 | Recording missing/delayed after call end | Poll with timeout; absence = `unknown` (never `booked`) before retry |
 | Counter-offer outside the window | Tier 2: tentative hold + callback; never auto-accept out-of-window |
-| Mid-call IVR ("press 2 for reservations") | `send_digits_on_answer` for known extensions; otherwise a documented limitation |
+| Mid-call IVR ("press 2 for reservations") | `SendDigits` on the dial for known extensions; otherwise a documented limitation |
 | Model alias repricing/behavior drift | Pin the Grok voice model version; per-call duration cap |
 | Telnyx KYC delays | Phase 0 first |
 | Restaurants hang up on AI callers | Concrete ask in the first sentence; iterate the opener from transcripts |

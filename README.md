@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-PhoneZero gives [Grok Bot](https://x.ai/news/introducing-grok-bot) a phone: ask a Bot to book a restaurant table, and a Grok voice agent dials the restaurant, negotiates with the host, and the Bot confirms the outcome back in chat (`booked @ 7:15pm` / `full, offered 8:15` / `no answer`). The name is the pitch: **zero infrastructure** — no servers, no deployment, nothing to host. Licensed under [Apache License 2.0](LICENSE).
+PhoneZero gives [Grok Bot](https://x.ai/news/introducing-grok-bot) a phone: ask a Bot to book a restaurant table, and a Grok voice agent dials the restaurant, negotiates with the host, and the Bot confirms the outcome back in chat (`booked @ 7:15pm` / `full, offered 8:15` / `no answer`). Valid outcome states are exactly `booked | unavailable | no_answer | needs_user | unknown | failed`. The name is the pitch: **zero infrastructure** — no servers, no deployment, nothing to host. Licensed under [Apache License 2.0](LICENSE).
 
 ## Adoption
 
@@ -23,7 +23,7 @@ Grok Bot (its own cloud computer)
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
 Telnyx dials restaurant (recorded, AMD on) ──(answered)──▶
-TeXML Bin bridges the call to sip:{number}@sip.voice.x.ai
+TeXML Bin bridges the call to sip:{number}@sip.voice.x.ai;transport=tls
                                   ▼
                   xAI Voice Agent (Builder-configured)
                   negotiates within the window · closing spoken recap

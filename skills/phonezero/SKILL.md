@@ -19,18 +19,17 @@ Before collecting a task or touching Telnyx, verify these variables are present.
 | `TELNYX_ACCOUNT_SID` | Plugin variable. Telnyx account SID in every TeXML path: `/v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/…`. |
 | `PHONEZERO_FROM_NUMBER` | E.164 DID Telnyx will present as `From`. |
 | `PHONEZERO_TEXML_APP_ID` | TeXML Application SID (`ApplicationSid` on the dial). |
-| `PHONEZERO_TEXML_BIN_URL` | Public TeXML Bin URL (`Url` on the dial). The bin bridges the answered call to `sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai`. |
-| `PHONEZERO_XAI_SIP_NUMBER` | Setup-time only. E.164 registered with xAI Direct SIP; already baked into the bin. Not passed on the dial. |
+| `PHONEZERO_TEXML_BIN_URL` | Public TeXML Bin URL (`Url` on the dial). The bin bridges the answered call to `sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`. |
+| `PHONEZERO_XAI_SIP_NUMBER` | Setup-time only. E.164 registered with xAI Direct SIP; already baked into the bin. Not passed on the dial. Usually the **same** number as `PHONEZERO_FROM_NUMBER` (one DID registered with xAI Direct SIP; a second number is not required). |
 | `PHONEZERO_AGENT_NAME` | Spoken name in the TASK BRIEF (`{agent_name}`). |
 | `PHONEZERO_DISCLOSE_AI` | Boolean, default `true`. When true, TASK BRIEF `{disclosure_clause}` is `, an automated assistant,`. When false, empty. The agent still answers truthfully if asked whether it is an AI. |
 | `XAI_API_KEY` | Environment only. Entered once via Grok Bot's secure secret request flow (masked, excluded from transcripts and model context). Used solely for `POST https://api.x.ai/v1/stt`. Never ask for this key in chat. Never echo it. |
 
 Call-time required: `TELNYX_API_KEY` (working MCP), `TELNYX_ACCOUNT_SID`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_TEXML_APP_ID`, `PHONEZERO_TEXML_BIN_URL`, `PHONEZERO_AGENT_NAME`, `XAI_API_KEY`. `PHONEZERO_DISCLOSE_AI` may be absent (treat as `true`). `PHONEZERO_XAI_SIP_NUMBER` is not required at dial if the bin is already configured.
 
-If any call-time variable is missing, or the Telnyx MCP is disconnected / 401s: **stop. Do not dial.**
+If any call-time variable is missing, or the Telnyx MCP is disconnected / 401s: **stop. Do not dial.** Tell the user PhoneZero is not configured and that they should say *"Set up phone calling."* You then walk setup on this computer and browser (Telnyx DID, TeXML app, TeXML bin, Voice Agent Builder + SIP). Enter every plugin variable from plugin.json in Plugins → Configure. Never paste TELNYX_API_KEY or XAI_API_KEY in chat.
 
-- Plugin / MCP gaps: tell the user PhoneZero is not configured and that they should say *"Set up phone calling."* You then walk setup on this computer and browser (Telnyx DID, TeXML app, TeXML bin, Voice Agent Builder + SIP). They enter `TELNYX_API_KEY` and `TELNYX_ACCOUNT_SID` only in the plugin config UI.
-- Missing `XAI_API_KEY`: stop and start Grok Bot's **secure secret request** flow for `XAI_API_KEY`. Never ask them to paste it in chat. After it is in the environment, re-check.
+- Missing `XAI_API_KEY` after plugin config: stop and start Grok Bot's **secure secret request** flow for `XAI_API_KEY`. Never ask them to paste it in chat. After it is in the environment, re-check.
 
 Do not invent `{TELNYX_ACCOUNT_SID}`.
 
@@ -46,7 +45,7 @@ Required:
 | Restaurant phone | E.164 (`+1…`). If you only have a name, look the number up, show it, and get confirmation. Reject non-US numbers. |
 | Date | Concrete calendar date. |
 | Preferred time | The first ask. |
-| Window start–end | Inclusive acceptable range on that date. |
+| Window start–end | Inclusive acceptable range on that date. Concatenate into the TASK BRIEF `{window}` as a single string (e.g. `6:30 PM to 8:00 PM`). |
 | Ranked alternates | Ordered fallback times the agent may accept without asking you. |
 | Party size | Integer ≥ 1. |
 | Booking name | Name on the reservation. |
@@ -54,11 +53,11 @@ Required:
 
 Optional: special requests (high-top, allergies, stroller). Pass through; do not invent.
 
-**Window and alternates.** If the user said "around 7" and did not give a window, propose a default (preferred ± 30–60 minutes, e.g. 6:30–8:00) and the ranked in-window slots (e.g. 6:45, 7:15, 7:30). Confirm that proposal in the call plan — do not silently widen it.
+**Window and alternates.** Collect start and end, then concatenate into `{window}` for the call plan and TASK BRIEF (e.g. start `6:30 PM` + end `8:00 PM` → `6:30 PM to 8:00 PM`). If the user said "around 7" and did not give a window, propose a default (preferred ± 30–60 minutes, e.g. `6:30 PM to 8:00 PM`) and the ranked in-window slots (e.g. 6:45, 7:15, 7:30). Confirm that proposal in the call plan — do not silently widen it.
 
 **Calendar.** If this Bot can read the user's calendar, compute alternates as times inside the window that do not conflict (travel buffer ~30 minutes before/after existing events). Rank: preferred time first, then nearest free in-window slots. If a backup day is free and the user allowed it, list it as a lower-rank alternate and say so in the plan. If there is no calendar access, use only the user's stated flexibility.
 
-Hold this task in conversation memory: restaurant, E.164, date, preferred time, window, ranked alternates, party, booking name, callback, special requests, `attempts` (0–2), prior `call_sid`s, last outcome.
+Hold this task in conversation memory: restaurant, E.164, date, preferred time, `{window}`, ranked alternates, party, booking name, callback, special requests, `attempts` (completed dial attempts, starts at 0), prior `call_sid`s, last outcome.
 
 ## 3. Try online booking first
 
@@ -77,12 +76,12 @@ Call plan
 - Who: {restaurant_name}
 - Number: {restaurant_phone}
 - Ask: party of {n} on {date} at {time}, under {booking_name}
-- Window: {window_start}–{window_end}
+- Window: {window}
 - Alternates the agent may accept (in order): {alternates}
 - Special requests: {special_requests or "none"}
 - From: {PHONEZERO_FROM_NUMBER}
 - Callback if they miss us: {callback_phone}
-- Attempt: {attempt} of 2
+- Attempt: {attempts + 1} of 2
 ```
 
 Dial **only** on an explicit yes to this plan ("yes", "go ahead", "call them"). Not implied consent, not "sounds good I guess," not a new unrelated message. If they edit the plan, re-show it and wait again.
@@ -91,16 +90,24 @@ Never auto-dial. Never dial because a previous task was approved. Vague task →
 
 ## 5. Calling-hours guard and attempt cap
 
+`attempts` = completed dial attempts for this task. Starts at 0. The plan shows `Attempt {attempts + 1} of 2`. Block when `attempts >= 2`.
+
 Place a call only when **all** of these hold:
 
 1. **US destination** (already required).
-2. **Plausible open hours for that restaurant**, in the restaurant's local timezone if known, otherwise the user's timezone. Look up hours when you can. If unknown, allow 10:30–20:30 local on typical service days only. Never call 22:00–09:00 in the user's local timezone. Never call a time you know the restaurant is closed.
-3. **`attempts` < 2** for this task. Maximum two call attempts. Attempts are 20 minutes apart (wall clock). A confirmation callback after an out-of-window hold is a **new** plan (still needs yes) and does not count against the original task's two attempts unless it is a retry of the same unanswered ask.
-4. The user has explicitly approved the current plan.
+2. **Hours — one policy, no gaps:**
+   - Hard cap: **09:00–21:00 user-local**. Never dial outside it, override or not.
+   - Known restaurant hours: only while the restaurant is open, and still inside the hard cap.
+   - Unknown restaurant hours: **10:30–20:30 restaurant-local** (if restaurant TZ is unknown, use the user's timezone).
+   - Never call a time you know the restaurant is closed.
+3. **`attempts` < 2** (do not dial when `attempts >= 2`). Maximum two completed dial attempts. Attempts are 20 minutes apart (wall clock). A confirmation callback after an out-of-window hold is a **new** plan (still needs a fresh yes) and does not count against the original task's two attempts unless it is a retry of the same unanswered ask.
+4. The user has explicitly approved the **current** plan.
 
-If it is outside calling hours: say when you will call, and wait (or ask them to tell you to proceed at that time). Do not skip the hours guard because they are impatient unless they explicitly override **and** it is still within 09:00–21:00 their local time.
+If it is outside calling hours: state the next legal window. Do **not** wait-and-dial. When that time comes, **re-show the plan** and dial only on a fresh explicit yes.
 
-Voicemail / no-answer: leave the message (the agent does this), increment `attempts`, wait 20 minutes, re-check hours, re-show a one-line plan ("retry #2, same ask"), and dial only on yes. After two attempts still no human: outcome `no_answer`. Stop.
+If they ask to call outside restaurant hours but still inside 09:00–21:00 user-local: that override is a **new plan** and needs a fresh yes. The 09:00–21:00 hard cap cannot be overridden.
+
+Voicemail / no-answer: leave the message (the agent does this), increment `attempts`, wait 20 minutes, re-check hours, **re-show the plan** (`Attempt {attempts + 1} of 2`, same ask), and dial only on a fresh yes. After two completed attempts still no human (`attempts >= 2`): outcome `no_answer`. Stop.
 
 ## 6. Brief the voice agent, then dial
 
@@ -125,6 +132,7 @@ JSON body (field names are PascalCase as Telnyx TeXML requires):
   "To": "{restaurant_phone}",
   "From": "{PHONEZERO_FROM_NUMBER}",
   "Url": "{PHONEZERO_TEXML_BIN_URL}",
+  "UrlMethod": "GET",
   "MachineDetection": "Enable",
   "DetectionMode": "Premium",
   "AsyncAmd": true,
@@ -135,6 +143,7 @@ JSON body (field names are PascalCase as Telnyx TeXML requires):
 
 - `To` / `From`: E.164 only. `From` is exactly `PHONEZERO_FROM_NUMBER`.
 - `Url` is exactly `PHONEZERO_TEXML_BIN_URL` (the bin performs the SIP bridge and dual-channel recording). Do not inline TeXML.
+- `UrlMethod` is always `GET`. Bins are static; always GET.
 - `TimeLimit` 600s is the per-call duration cap. Do not raise it.
 - `AsyncAmd` must be `true`. Synchronous AMD blocks TeXML waiting for a status callback PhoneZero does not run. Read the AMD result post-hoc from `answered_by` on the call-fetch endpoint (`human` | `machine` | `not_sure`): treat `machine` as voicemail, `not_sure` as human.
 - If the restaurant's reservations extension is known **and** the MCP tool schema includes `SendDigits`, add `"SendDigits": "ww2"` (or the known sequence; `w` = 500ms pause). Mid-call DTMF is not available in this architecture — if you do not know the extension, omit it.
@@ -155,7 +164,7 @@ This endpoint is eventually consistent.
 | `status` `ringing`, `in-progress` | Keep polling. |
 | `status` `completed` | Go to recordings. |
 | `status` `no-answer`, `busy` | Outcome `no_answer` (retry rules in §5). No `booked`. |
-| `status` `failed`, `canceled` | Outcome `failed` unless you have a transcript that says otherwise. |
+| `status` `failed`, `canceled` | Outcome `failed` always. Never `booked`. Do not override from a transcript. If a transcript exists, quote it under `failed` only. |
 | `answered_by` `machine` | Still wait for `completed`, then treat as voicemail unless a human later appears in the transcript. |
 | `answered_by` `human` or `not_sure` | Treat as human. `not_sure` is human. |
 
@@ -176,6 +185,8 @@ After a terminal call status:
 curl -X POST https://api.x.ai/v1/stt \
   -H "Authorization: Bearer $XAI_API_KEY" \
   -F multichannel=true \
+  -F format=true \
+  -F language=en \
   -F file=@/tmp/phonezero-{call_sid}.audio
 ```
 
@@ -211,13 +222,15 @@ Map everything else:
 | Host objected to recording or to an AI caller | `needs_user` |
 | Wrong number, not a restaurant, host asked a human to call back | `needs_user` |
 | Missing recording/transcript, unparseable recap, recap/host disagree | `unknown` |
-| MCP/dial/API failure, `status=failed` with no usable transcript | `failed` |
+| Call abandoned mid-hold, recap `not booked`, host never refused | `unknown` |
+| Call `status` `failed` or `canceled` | `failed` always. Never `booked`. Quote a transcript under `failed` only. |
+| MCP/dial/API failure | `failed` |
 
 Valid outcome states (exactly one): `booked` | `unavailable` | `no_answer` | `needs_user` | `unknown` | `failed`.
 
 ## 10. Delete artifacts
 
-After the outcome is classified (and you are ready to report it):
+After successful STT (and the outcome is classified / you are ready to report it), delete both local audio and the Telnyx recording. Scripts delete the Telnyx recording by default after STT; do the same here.
 
 1. Delete the local temp audio file.
 2. Delete the Telnyx recording via the same MCP: `DELETE /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Recordings/{recording_sid}.json`.

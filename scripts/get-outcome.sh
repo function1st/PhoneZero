@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# get-outcome.sh — poll a TeXML call to a terminal status, download the
-# Dial-verb recording, and transcribe it with xAI STT (the default
-# outcome path).
+# Developer tool for a personal machine that is allowed to hold API keys. The
+# Grok Bot production path uses the Telnyx hosted MCP and never exports
+# TELNYX_API_KEY into its environment.
+#
+# get-outcome.sh — poll a TeXML call to a terminal status, download a
+# completed Dial-verb recording, and transcribe it with xAI STT.
 #
 # Call status (eventually consistent):
 #   GET /v2/texml/Accounts/{account_sid}/Calls/{call_sid}
@@ -9,45 +12,49 @@
 #   AMD verdict is answered_by on that resource (human | machine | not_sure),
 #   because place-call.sh sends AsyncAmd=true and omits StatusCallback.
 #
-# Recordings for that call:
+# Recordings:
 #   GET /v2/texml/Accounts/{account_sid}/Calls/{call_sid}/Recordings.json
 #   https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-recordings-for-a-call
+#   Only status=completed with a non-empty media_url is downloaded.
 #
 # Default transcript: POST https://api.x.ai/v1/stt (multipart).
 #   https://docs.x.ai/developers/model-capabilities/audio/speech-to-text
-#   Dial-verb recordings are not auto-transcribed by Telnyx (only <Record
-#   transcription="true"> and the <Transcription> verb create them).
-#   https://developers.telnyx.com/docs/voice/texml/rest-api/transcripts
+#
+# After successful STT, DELETE the Telnyx recording unless --keep-remote:
+#   DELETE /v2/texml/Accounts/{account_sid}/Recordings/{recording_sid}.json
+#   https://developers.telnyx.com/api-reference/texml-rest-commands/delete-recording-resource
+#
+# Exit codes:
+#   0  success (non-empty STT text)
+#   1  failed (HTTP / download / empty STT)
+#   2  config (missing env, missing XAI_API_KEY, bad args)
+#   3  unknown (call or recording wait ended with no completed recording)
 #
 # Required env (never echoed):
 #   TELNYX_API_KEY
 #   TELNYX_ACCOUNT_SID
-# Optional:
-#   XAI_API_KEY   — required for the STT step (Grok Bot secure-secret flow)
+#   XAI_API_KEY   — required for STT (Grok Bot secure-secret flow)
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: get-outcome.sh [--timeout SECONDS] [--interval SECONDS] [--keep-audio] CALL_SID
+Usage: get-outcome.sh [--timeout SECONDS] [--interval SECONDS] [--rec-interval SECONDS] [--keep-audio] [--keep-remote] CALL_SID
 
-Poll a TeXML call until it reaches a terminal status, download its
-recording(s), and transcribe with xAI STT (multichannel). Prints
-answered_by (AMD) and the per-channel transcript.
+Poll a TeXML call until it reaches a terminal status, download a
+completed recording, and transcribe with xAI STT (multichannel). Prints
+answered_by (AMD) and the per-channel transcript. Never prints media_url.
 
-  --timeout SECONDS    Max seconds to wait for a terminal call status
-                       (default: 720)
-  --interval SECONDS   Poll interval (default: 5)
-  --keep-audio         Keep downloaded recording files in the current
-                       directory (default: delete temp audio on exit)
+  --timeout SECONDS         Live-call poll timeout (default: 720)
+  --interval SECONDS        Live-call poll interval (default: 10)
+  --rec-interval SECONDS    Recordings poll interval (default: 15)
+  --keep-audio              Keep downloaded recording files in cwd
+                            (default: delete temp audio on exit)
+  --keep-remote             Do not DELETE the Telnyx recording after STT
 
 Required environment:
   TELNYX_API_KEY
   TELNYX_ACCOUNT_SID
-
-Optional environment:
-  XAI_API_KEY          xAI key for POST /v1/stt. If unset, the recording
-                       path is printed and the transcript step is skipped
-                       with a one-line secure-secret instruction.
+  XAI_API_KEY               xAI key for POST /v1/stt (secure-secret flow)
 
 Example (fixture SID shape only):
   get-outcome.sh v3:exampleCallSid000000000000000000000000000
@@ -60,6 +67,10 @@ require_env() {
     echo "error: $name is not set" >&2
     exit 2
   fi
+}
+
+urlencode() {
+  VAL="$1" python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["VAL"], safe=""))'
 }
 
 # Authenticated GET. Writes body to $1, prints HTTP status on stdout.
@@ -75,23 +86,58 @@ telnyx_get() {
     "$url"
 }
 
-# Download a recording media URL (may require the same bearer).
-# Record-verb docs say callback RecordingUrls expire in 10 minutes; API/portal
-# copies remain. We still fetch immediately.
-# https://developers.telnyx.com/docs/voice/programmable-voice/texml-verbs/record
+# Two-step media fetch so Authorization is not forwarded on cross-origin
+# redirects. First hop: no -L, with bearer. If 3xx, GET Location without
+# the header (further hops may follow with -L, still without the bearer).
 download_media() {
   local dest="$1"
   local media_url="$2"
-  local code
+  local hdr="${WORKDIR}/media.hdr"
+  local code loc
   code="$(
     curl -sS \
+      -D "$hdr" \
       -o "$dest" \
       -w '%{http_code}' \
-      -L \
       -H "Authorization: Bearer ${TELNYX_API_KEY}" \
       "$media_url"
-  )"
-  echo "$code"
+  )" || true
+  case "$code" in
+    200)
+      echo "200"
+      return 0
+      ;;
+    301|302|303|307|308)
+      loc="$(
+        python3 -c '
+import os,sys
+from urllib.parse import urljoin
+hdr_path, base = sys.argv[1], sys.argv[2]
+loc=""
+with open(hdr_path,"rb") as f:
+    for raw in f:
+        line=raw.decode("iso-8859-1","replace")
+        if line.lower().startswith("location:"):
+            loc=line.split(":",1)[1].strip()
+print(urljoin(base, loc) if loc else "")
+' "$hdr" "$media_url"
+      )"
+      if [ -z "$loc" ]; then
+        echo "$code"
+        return 0
+      fi
+      curl -sS \
+        -o "$dest" \
+        -w '%{http_code}' \
+        -L \
+        "$loc"
+      return 0
+      ;;
+    *)
+      echo "${code:-000}"
+      return 0
+      ;;
+  esac
 }
 
 # Sniff a container format so STT can auto-detect (do not set audio_format
@@ -124,7 +170,6 @@ xai_stt() {
   local audio_path="$1"
   local filename="$2"
   local out_file="$3"
-  # -F order: options first, file last (fields after file may be ignored).
   curl -sS \
     -o "$out_file" \
     -w '%{http_code}' \
@@ -137,6 +182,7 @@ xai_stt() {
     "https://api.x.ai/v1/stt"
 }
 
+# Print per-channel text. Empty channels AND empty top-level text is failure.
 print_stt_channels() {
   python3 -c '
 import json,sys
@@ -146,51 +192,103 @@ dur=d.get("duration")
 if lang or dur is not None:
     print("STT language=%s duration=%s" % (lang, dur))
 channels=d.get("channels") or []
-if channels:
+chan_texts=[(ch.get("text") or "").strip() for ch in channels]
+top=(d.get("text") or "").strip()
+if not any(chan_texts) and not top:
+    sys.stderr.write("error: empty STT transcript (all channel texts and top-level text are empty)\n")
+    sys.exit(1)
+if any(chan_texts):
     for ch in channels:
-        idx=ch.get("index")
-        print("channel %s:" % idx)
+        print("channel %s:" % ch.get("index"))
         print(ch.get("text") or "")
         print("")
     sys.exit(0)
-# Fallback if the server omitted channels (e.g. mono file).
-text=d.get("text") or ""
-if text:
-    print(text)
-    sys.exit(0)
-sys.stderr.write("error: STT response had neither channels[] nor text\n")
-sys.exit(1)
+print(top)
 '
 }
 
-# Best-effort Telnyx transcription lookup. Dial-verb recordings do not
-# create these; any miss is silent.
-# https://developers.telnyx.com/docs/voice/texml/rest-api/transcripts
-maybe_telnyx_transcription() {
-  local url="https://api.telnyx.com/v2/texml/Accounts/${TELNYX_ACCOUNT_SID}/Transcriptions.json?PageSize=20"
-  local code
-  code="$(telnyx_get "${WORKDIR}/texml_tx.json" "$url" || true)"
-  if [ "${code:-}" != "200" ]; then
-    return 0
-  fi
-  CALL_SID="$CALL_SID" python3 -c '
-import json,os,sys
+# Write sid<TAB>media_url for recordings that are completed AND have media_url.
+# Never prints media_url to stdout (writes a private tsv only).
+write_completed_media_tsv() {
+  python3 -c '
+import json,sys
 d=json.load(sys.stdin)
-call=os.environ["CALL_SID"]
-for t in (d.get("transcriptions") or []):
-    if t.get("call_sid")!=call and t.get("CallSid")!=call:
-        continue
-    text=t.get("transcription_text") or ""
-    if text:
-        print("Telnyx transcription (unexpected for DialVerb; using as extra):")
-        print(text)
-        sys.exit(0)
-' <"${WORKDIR}/texml_tx.json" 2>/dev/null || true
+out=sys.argv[1]
+rows=[]
+for r in (d.get("recordings") or []):
+    url=(r.get("media_url") or "").strip()
+    sid=r.get("sid") or ""
+    if r.get("status")=="completed" and url and sid:
+        rows.append((sid, url))
+with open(out,"w") as f:
+    for sid, url in rows:
+        f.write("%s\t%s\n" % (sid, url))
+print(len(rows))
+' "${WORKDIR}/completed.tsv" <"${WORKDIR}/recordings.json"
+}
+
+summarize_recordings() {
+  python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+recs=d.get("recordings") or []
+print("Recordings: %d" % len(recs))
+for i, r in enumerate(recs, 1):
+    url=(r.get("media_url") or "").strip()
+    has="yes" if url else "no"
+    print("  [%d] sid=%s status=%s channels=%s source=%s duration=%s has_media=%s" % (
+        i, r.get("sid"), r.get("status"), r.get("channels"),
+        r.get("source"), r.get("duration"), has))
+' <"${WORKDIR}/recordings.json"
+}
+
+fetch_recordings_json() {
+  local code
+  code="$(telnyx_get "${WORKDIR}/recordings.json" "$RECORDINGS_URL")"
+  if [ "$code" != "200" ]; then
+    echo "error: fetch-recordings-for-a-call HTTP ${code} (outcome failed)" >&2
+    python3 -c 'import sys; print(sys.stdin.read()[:400])' <"${WORKDIR}/recordings.json" >&2
+    exit 1
+  fi
+}
+
+# DELETE .../Recordings/{recording_sid}.json — 204 on success.
+# https://developers.telnyx.com/api-reference/texml-rest-commands/delete-recording-resource
+delete_remote_recording() {
+  local rec_sid="$1"
+  local rec_enc del_url code
+  rec_enc="$(urlencode "$rec_sid")"
+  del_url="https://api.telnyx.com/v2/texml/Accounts/${ACCOUNT_SID_ENC}/Recordings/${rec_enc}.json"
+  code="$(
+    curl -sS \
+      -o "${WORKDIR}/delete.json" \
+      -w '%{http_code}' \
+      -X DELETE \
+      -H "Authorization: Bearer ${TELNYX_API_KEY}" \
+      -H "Accept: application/json" \
+      "$del_url"
+  )" || code="000"
+  if [ "$code" = "204" ] || [ "$code" = "200" ]; then
+    echo "Deleted Telnyx recording ${rec_sid} (HTTP ${code})"
+  else
+    echo "warning: failed to delete Telnyx recording ${rec_sid} (HTTP ${code}); not fatal" >&2
+  fi
+}
+
+sanitize_rec_sid() {
+  local rec_sid="$1"
+  if [[ ! "$rec_sid" =~ ^[A-Za-z0-9:_-]+$ ]]; then
+    echo "error: recording sid contains characters not allowed in a filesystem path" >&2
+    exit 2
+  fi
 }
 
 TIMEOUT_SECS=720
-INTERVAL_SECS=5
+INTERVAL_SECS=10
+REC_INTERVAL_SECS=15
+REC_LIMIT=180
 KEEP_AUDIO=0
+KEEP_REMOTE=0
 CALL_SID=""
 
 while [ $# -gt 0 ]; do
@@ -215,8 +313,20 @@ while [ $# -gt 0 ]; do
       INTERVAL_SECS="$2"
       shift 2
       ;;
+    --rec-interval)
+      if [ $# -lt 2 ]; then
+        echo "error: --rec-interval requires a value" >&2
+        exit 2
+      fi
+      REC_INTERVAL_SECS="$2"
+      shift 2
+      ;;
     --keep-audio)
       KEEP_AUDIO=1
+      shift
+      ;;
+    --keep-remote)
+      KEEP_REMOTE=1
       shift
       ;;
     --)
@@ -251,8 +361,11 @@ esac
 case "$INTERVAL_SECS" in
   ''|*[!0-9]*) echo "error: --interval must be an integer" >&2; exit 2 ;;
 esac
-if [ "$INTERVAL_SECS" -lt 1 ]; then
-  echo "error: --interval must be >= 1" >&2
+case "$REC_INTERVAL_SECS" in
+  ''|*[!0-9]*) echo "error: --rec-interval must be an integer" >&2; exit 2 ;;
+esac
+if [ "$INTERVAL_SECS" -lt 1 ] || [ "$REC_INTERVAL_SECS" -lt 1 ]; then
+  echo "error: poll intervals must be >= 1" >&2
   exit 2
 fi
 
@@ -268,12 +381,10 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 2
 fi
 
-# CallSid is a path segment (often v3:...). Percent-encode via python.
-CALL_SID_ENC="$(
-  CALL_SID="$CALL_SID" python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["CALL_SID"], safe=""))'
-)"
+ACCOUNT_SID_ENC="$(urlencode "$TELNYX_ACCOUNT_SID")"
+CALL_SID_ENC="$(urlencode "$CALL_SID")"
 
-CALL_URL="https://api.telnyx.com/v2/texml/Accounts/${TELNYX_ACCOUNT_SID}/Calls/${CALL_SID_ENC}"
+CALL_URL="https://api.telnyx.com/v2/texml/Accounts/${ACCOUNT_SID_ENC}/Calls/${CALL_SID_ENC}"
 # https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-recordings-for-a-call
 RECORDINGS_URL="${CALL_URL}/Recordings.json"
 
@@ -294,17 +405,16 @@ is_terminal() {
   esac
 }
 
-echo "Polling call status: ${CALL_URL}"
-echo "(GET is eventually consistent — fetch-a-call docs)"
+echo "Polling call status every ${INTERVAL_SECS}s (timeout ${TIMEOUT_SECS}s)"
 
 ELAPSED=0
 STATUS=""
 ANSWERED_BY=""
 
-while [ "$ELAPSED" -le "$TIMEOUT_SECS" ]; do
+while :; do
   CODE="$(telnyx_get "${WORKDIR}/call.json" "$CALL_URL")"
   if [ "$CODE" != "200" ]; then
-    echo "error: fetch-a-call HTTP ${CODE}" >&2
+    echo "error: fetch-a-call HTTP ${CODE} (outcome failed)" >&2
     python3 -c 'import sys; print(sys.stdin.read()[:400])' <"${WORKDIR}/call.json" >&2
     exit 1
   fi
@@ -326,14 +436,12 @@ print(d.get("answered_by") or "")
   if is_terminal "$STATUS"; then
     break
   fi
+  if [ "$ELAPSED" -ge "$TIMEOUT_SECS" ]; then
+    break
+  fi
   sleep "$INTERVAL_SECS"
   ELAPSED=$((ELAPSED + INTERVAL_SECS))
 done
-
-if ! is_terminal "$STATUS"; then
-  echo "error: call did not reach a terminal status within ${TIMEOUT_SECS}s (last status=${STATUS})" >&2
-  exit 1
-fi
 
 echo
 echo "Call SID:    ${CALL_SID}"
@@ -347,134 +455,106 @@ else
   echo "Answered-by: (empty — AMD result not populated on this resource yet)"
 fi
 
-# Recordings can lag call completion. Poll until we see a completed item or
-# the remaining timeout budget is exhausted.
+CALL_TIMED_OUT=0
+if ! is_terminal "$STATUS"; then
+  CALL_TIMED_OUT=1
+  echo "Live-call poll reached ${TIMEOUT_SECS}s still non-terminal; doing one recordings check."
+fi
+
 echo
-echo "Fetching recordings: ${RECORDINGS_URL}"
+echo "Fetching recordings"
 
-REC_WAIT=0
-REC_LIMIT=180
-HAVE_COMPLETED=0
-
-while [ "$REC_WAIT" -le "$REC_LIMIT" ]; do
-  CODE="$(telnyx_get "${WORKDIR}/recordings.json" "$RECORDINGS_URL")"
-  if [ "$CODE" != "200" ]; then
-    echo "error: fetch-recordings-for-a-call HTTP ${CODE}" >&2
-    python3 -c 'import sys; print(sys.stdin.read()[:400])' <"${WORKDIR}/recordings.json" >&2
-    exit 1
+if [ "$CALL_TIMED_OUT" -eq 1 ]; then
+  fetch_recordings_json
+  COMPLETED_N="$(write_completed_media_tsv)"
+  summarize_recordings
+  if [ "$COMPLETED_N" = "0" ]; then
+    echo "error: outcome unknown — live call still ${STATUS:-unset} at ${TIMEOUT_SECS}s and no completed recording with media_url" >&2
+    exit 3
   fi
-  HAVE_COMPLETED="$(
-    python3 -c '
+else
+  REC_WAIT=0
+  COMPLETED_N=0
+  while :; do
+    fetch_recordings_json
+    COMPLETED_N="$(write_completed_media_tsv)"
+    if [ "$COMPLETED_N" != "0" ]; then
+      break
+    fi
+    COUNT="$(
+      python3 -c '
 import json,sys
 d=json.load(sys.stdin)
-recs=d.get("recordings") or []
-print(1 if any((r.get("status")=="completed") for r in recs) else 0)
+print(len(d.get("recordings") or []))
 ' <"${WORKDIR}/recordings.json"
-  )"
-  if [ "$HAVE_COMPLETED" = "1" ]; then
+    )"
+    echo "  recordings=${COUNT} completed_with_media=0 (${REC_WAIT}s)"
+    if [ "$REC_WAIT" -ge "$REC_LIMIT" ]; then
+      break
+    fi
+    sleep "$REC_INTERVAL_SECS"
+    REC_WAIT=$((REC_WAIT + REC_INTERVAL_SECS))
+  done
+  summarize_recordings
+  if [ "$COMPLETED_N" = "0" ]; then
+    echo "error: outcome unknown — no completed recording with media_url after ${REC_LIMIT}s" >&2
+    exit 3
+  fi
+fi
+
+if [ -z "${XAI_API_KEY:-}" ]; then
+  # Persist the first completed recording so a later STT run can use it.
+  while IFS="$(printf '\t')" read -r rec_sid media_url; do
+    sanitize_rec_sid "$rec_sid"
+    dest="${WORKDIR}/recording-${rec_sid}"
+    DL_CODE="$(download_media "$dest" "$media_url")"
+    SIZE="$(wc -c <"$dest" | tr -d ' ')"
+    if [ "$DL_CODE" = "200" ] && [ "$SIZE" -gt 0 ]; then
+      filename="$(sniff_audio_name "$dest")"
+      kept="./phonezero-recording-${filename}"
+      cp "$dest" "$kept"
+      echo "Recording file: ${kept}"
+    fi
     break
-  fi
-  COUNT="$(
-    python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-print(len(d.get("recordings") or []))
-' <"${WORKDIR}/recordings.json"
-  )"
-  echo "  recordings=${COUNT} (waiting for status=completed, ${REC_WAIT}s)"
-  sleep "$INTERVAL_SECS"
-  REC_WAIT=$((REC_WAIT + INTERVAL_SECS))
-done
-
-python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-recs=d.get("recordings") or []
-print("Recordings: %d" % len(recs))
-for i, r in enumerate(recs, 1):
-    print("  [%d] sid=%s status=%s channels=%s source=%s duration=%s" % (
-        i, r.get("sid"), r.get("status"), r.get("channels"),
-        r.get("source"), r.get("duration")))
-    print("      media_url=%s" % (r.get("media_url") or "(none)"))
-' <"${WORKDIR}/recordings.json"
-
-REC_COUNT="$(
-  python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-print(len(d.get("recordings") or []))
-' <"${WORKDIR}/recordings.json"
-)"
-if [ "$REC_COUNT" = "0" ]; then
-  echo "error: no recordings for this call after ${REC_LIMIT}s" >&2
-  exit 1
+  done <"${WORKDIR}/completed.tsv"
+  echo "error: transcript step requires XAI_API_KEY via the Grok Bot secure-secret flow (never paste the key in chat)" >&2
+  exit 2
 fi
-
-python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-for r in (d.get("recordings") or []):
-    url=r.get("media_url") or ""
-    sid=r.get("sid") or "unknown"
-    if url:
-        print("%s\t%s" % (sid, url))
-' <"${WORKDIR}/recordings.json" >"${WORKDIR}/media.tsv"
-
-if [ ! -s "${WORKDIR}/media.tsv" ]; then
-  echo "error: recordings listed but none had a media_url" >&2
-  exit 1
-fi
-
-MISSING_STT_KEY=0
 
 while IFS="$(printf '\t')" read -r rec_sid media_url; do
+  sanitize_rec_sid "$rec_sid"
   dest="${WORKDIR}/recording-${rec_sid}"
   DL_CODE="$(download_media "$dest" "$media_url")"
   SIZE="$(wc -c <"$dest" | tr -d ' ')"
   if [ "$DL_CODE" != "200" ] || [ "$SIZE" -eq 0 ]; then
-    echo "error: recording ${rec_sid} download HTTP ${DL_CODE} (${SIZE} bytes)" >&2
-    echo "       media_url=${media_url}" >&2
+    echo "error: recording ${rec_sid} download HTTP ${DL_CODE} (${SIZE} bytes) (outcome failed)" >&2
     exit 1
   fi
   filename="$(sniff_audio_name "$dest")"
   named="${WORKDIR}/${filename}"
   mv "$dest" "$named"
   dest="$named"
-  echo "Downloaded recording ${rec_sid} (${SIZE} bytes) -> ${dest}"
+  echo "Downloaded recording ${rec_sid} (${SIZE} bytes)"
 
   if [ "$KEEP_AUDIO" -eq 1 ]; then
     kept="./phonezero-recording-${filename}"
     cp "$dest" "$kept"
-    KEPT_FILES+=("$kept")
     echo "Kept audio: ${kept}"
-  fi
-
-  if [ -z "${XAI_API_KEY:-}" ]; then
-    MISSING_STT_KEY=1
-    # Temp dir is deleted on exit; persist a cwd copy so the printed path
-    # survives for a later STT run after the secure-secret flow.
-    if [ "$KEEP_AUDIO" -ne 1 ]; then
-      kept="./phonezero-recording-${filename}"
-      cp "$dest" "$kept"
-    fi
-    echo "Recording file: ${kept}"
-    continue
   fi
 
   echo
   echo "Transcribing with xAI STT (multichannel=true)..."
   STT_CODE="$(xai_stt "$dest" "$filename" "${WORKDIR}/stt.json")"
   if [ "$STT_CODE" != "200" ]; then
-    echo "error: xAI STT HTTP ${STT_CODE}" >&2
+    echo "error: xAI STT HTTP ${STT_CODE} (outcome failed)" >&2
     python3 -c 'import sys; print(sys.stdin.read()[:400])' <"${WORKDIR}/stt.json" >&2
     exit 1
   fi
   print_stt_channels <"${WORKDIR}/stt.json"
-done <"${WORKDIR}/media.tsv"
 
-# Silent unless a Dial-verb recording somehow has a Telnyx transcription.
-maybe_telnyx_transcription
-
-if [ "$MISSING_STT_KEY" -eq 1 ]; then
-  echo "Transcript step needs XAI_API_KEY via the Grok Bot secure-secret flow (never paste the key in chat)."
-fi
+  if [ "$KEEP_REMOTE" -eq 0 ]; then
+    delete_remote_recording "$rec_sid"
+  else
+    echo "Kept remote Telnyx recording ${rec_sid} (--keep-remote)"
+  fi
+done <"${WORKDIR}/completed.tsv"

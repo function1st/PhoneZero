@@ -2,7 +2,9 @@
 
 ## Reporting
 
-Report vulnerabilities to **security@function1st.example** (placeholder — replace with a monitored address before public release). Include the affected version, a repro that uses only fixture numbers, and impact. Do not file secrets or live call recordings in a public issue.
+TODO before marketplace submission: replace with a monitored address.
+
+Include the affected version, a repro that uses only fixture numbers, and impact. Do not file secrets or live call recordings in a public issue.
 
 ## Key handling
 
