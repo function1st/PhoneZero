@@ -1,195 +1,136 @@
 # PhoneHand — Implementation Plan
 
-A personal phone-task service my [Grok Bot](https://x.ai/news/introducing-grok-bot) teammates can delegate to. A Bot calls a tool like `book_reservation({ restaurant_phone, window, party_size, name })`; this service dials the restaurant from a Telnyx number, a Grok voice agent talks to the host, and the structured outcome (`booked @ 7:15pm` / `full, offered 8:15` / `no answer`) comes back to the Bot and to me by SMS.
+A phone-task capability for [Grok Bot](https://x.ai/news/introducing-grok-bot): ask a Bot to book a restaurant table, and a Grok voice agent phones the restaurant and reports back (`booked @ 7:15pm` / `full, offered 8:15` / `no answer`).
 
-**Primary consumer: Grok Bot** (the xAI + Cursor always-on teammate product, beta Aug 2026). Grok Bot uses Cursor's plugin and MCP infrastructure — plugins are enabled on the Cursor plugins surface, MCP auth is shared across Cursor + Grok Bot, and hosted MCP tokens stay with the backend. So the deliverable is a **hosted MCP endpoint + a plugin (skill + MCP config)** that installs into Grok Bot, with the same plugin working in Cursor itself for free.
+**This is a skill, not a service.** There is no server, no deployment, and no infrastructure to run. The adoption contract for a stranger is exactly:
 
-Personal use only: one user, no product analytics, no multi-tenant anything, and Azure kept at near-zero idle cost.
+1. Sign up for a Telnyx account and an xAI developer account.
+2. Ask Grok Bot: *"Set up phone calling using the PhoneHand skill."* (The Bot performs the setup on its own computer and browser.)
+3. Ask Grok Bot: *"Book me a table for 2 at Joe's Pizza Friday around 7."*
 
-## Architecture decision record (short form)
+## How it works with zero servers
+
+Two hosted platforms already provide every piece the old service designs (Azure container, then Cloudflare Worker) were building:
+
+| Job | Old design | Now handled by |
+|---|---|---|
+| Voice agent session (prompt, tools, turn-taking) | Our media bridge / control WebSocket | **xAI Voice Agent Builder** — a console-configured agent answers calls on the SIP-connected number; no `realtime.call.incoming` webhook, no session code |
+| Originate the restaurant call | Our orchestrator + carrier adapter | **One Telnyx REST call** from Grok Bot's own computer (`POST /v2/texml/Accounts/{sid}/Calls`) |
+| Bridge restaurant ↔ voice agent | Our media relay | **Telnyx-hosted TeXML Bin** (static XML: `<Dial><Sip>sip:{number}@sip.voice.x.ai;transport=tls</Sip></Dial>`) — Telnyx bridges the answered call into xAI's SIP endpoint |
+| Structured outcome | `report_outcome` tool → SQLite → SMS | **Builder's Gmail / Google Calendar connectors**: the voice agent emails a rigidly formatted outcome (and can put the confirmed reservation on the calendar itself); Grok Bot reads the email |
+| Task state, history, transcripts | SQLite / D1 | **Builder observability** (every call recorded + transcribed + tool traces in the xAI console) + the outcome emails |
+| MCP endpoint for the Bot | Hosted MCP server | **Not needed** — the "tool" is the Bot running one `curl` from its computer, taught by `SKILL.md` |
+
+### Per-task flow
+
+```
+Me: "Book Joe's Pizza, Friday 7pm, party of 2"
+  ▼
+Grok Bot (its own cloud computer)
+  │ 1. looks up restaurant phone (browser)
+  │ 2. POST /v2/texml/Accounts/{sid}/Calls   ← one curl, Telnyx API key from its env
+  ▼
+Telnyx dials restaurant ──(answered)──▶ TeXML Bin bridges to sip:{num}@sip.voice.x.ai
+                                              ▼
+                              xAI Voice Agent (Builder-configured)
+                              talks to host · negotiates within window
+                              on completion: sends outcome email (Gmail connector)
+                                              ▼
+Grok Bot reads outcome email ──▶ reports back to me / adds to my calendar
+```
+
+The restaurant-side audio never touches user infrastructure; Telnyx and xAI talk SIP directly.
+
+## Architecture decisions
 
 | Decision | Choice | Why |
 |---|---|---|
-| Telephony carrier | **Telnyx** (Call Control v2 + bidirectional media streaming) | API-first REST command model, ~half Twilio's per-minute cost, L16/OPUS codecs for AI audio. Isolated behind an adapter so the carrier is swappable. |
-| Voice model | **xAI Grok Speech-to-Speech** (`wss://api.x.ai/v1/realtime`) | We own the WebSocket session, so we control tools and prompts. Pin an explicit model version, not `grok-voice-latest` (the alias already repriced $0.05 → $0.08/min). |
-| Grok attach pattern | **Media bridge** (Telnyx stream ↔ our service ↔ Grok WS) | Full control of DTMF, barge-in, transcripts, and model swaps. SIP-to-xAI is a later simplification if wanted. |
-| Agent-facing interface | **Remote MCP server (streamable HTTP + bearer header) as the primary transport**; stdio for local dev; same handlers as plain REST for curl/testing | Grok Bot connects to custom MCP servers by URL + auth header from its Plugins surface — it runs on a cloud VM, so a local stdio package is useless to it. The hosted endpoint is the product. |
-| App stack | **TypeScript**, single Node 22 service, pnpm | One deployable: MCP/REST endpoints, Telnyx webhooks, and the media bridge in one process. No web app. |
-| Persistence | **SQLite** on an Azure Files mount | Task + call + transcript history for one user does not justify a database server. |
-| Infra | **One Azure Container App, scale-to-zero**, Key Vault, GHCR (free) for images, Bicep + azd | Idle cost ≈ pennies. See cold-start note below — scale-to-zero is safe because *we* originate every call. |
-| Notifications | Telnyx SMS to my phone | No UI to check; outcome arrives as a text and as the tool result. |
-| License & naming | **Apache-2.0**, neutral project name (no "Grok"/"Telnyx" in the name) | Repo will be published as an open-source reference (Cursor Marketplace requires open source). Apache-2.0 adds a patent grant over MIT. Avoid xAI/Telnyx trademarks in the project name; describe compatibility in prose instead. |
+| Telephony | **Telnyx** (TeXML REST + hosted TeXML Bins + direct SIP to xAI) | The only carrier work is one outbound-call REST request and a static hosted bin — no webhooks, no media streaming, no user server. Twilio equivalents (TwiML Bins) exist, so a Twilio variant is a docs PR. |
+| Voice agent | **xAI Voice Agent Builder** (beta) on a SIP-connected Telnyx number | Owns the call session, prompt, guardrails, tools, recordings, and transcripts. Free provisioned number not used — the Telnyx number connects via direct SIP so *we* can originate calls on it. |
+| Outcome channel | **Formatted email via Builder's Gmail connector** (calendar write as a bonus) | The only serverless way to get a machine-readable result out of the call. Rigid subject format (`[PhoneHand] BOOKED 19:15 Joe's Pizza …`) so the Bot parses reliably. Transcript in the xAI console is the audit trail. |
+| Orchestrator | **Grok Bot itself**, guided by `skills/SKILL.md` | The Bot has a persistent computer, terminal, browser, and Gmail access. It fires the call, waits, reads the outcome, retries per policy, and reports back. Retries/scheduling use Bot routines — no queue infra. |
+| Guardrails | Telnyx spend caps + xAI spend limits + skill-encoded policy (max attempts, calling hours, confirmation read-back in the agent prompt) | Nothing server-side exists to enforce caps, so the money-level backstops live in the two vendor dashboards. Acceptable for personal use; documented honestly. |
+| License & naming | **Apache-2.0**, neutral name | Cursor Marketplace requires open source; avoid xAI/Telnyx trademarks in the name. |
 
-**Why scale-to-zero works here:** the service is only busy when a task is in flight, and every call is outbound. The MCP/REST request that submits a task is what wakes the container; we dial only after the process is warm, so there is never a cold start mid-call. Telnyx webhooks and the stream WebSocket target the same (now-warm) app.
-
-## System shape
+## What ships in the repo
 
 ```
-Grok Bot (cloud teammate)          Cursor agent (same plugin)
-   │  MCP tool call: book_reservation(...)
-   ▼
-┌──────────────────────────────────────────────┐
-│  PhoneHand service (one Container App)       │
-│  • MCP + REST endpoints (bearer auth)        │
-│  • Task state machine (SQLite)               │
-│  • Telnyx webhook receiver (signed)          │
-│  • Media bridge: Telnyx wss ↔ Grok wss       │
-└──────┬───────────────────────────┬───────────┘
-       │ Call Control REST          │ wss (L16 PCM)
-       ▼                            ▼
-   Telnyx ──PSTN──▶ Restaurant   xAI Grok realtime
-       │
-       └── SMS outcome ──▶ my phone
+skills/phonehand/SKILL.md   the product: teaches Grok Bot setup + per-call flow
+prompts/voice-agent.md      the Voice Agent Builder system prompt (paste/import)
+texml/bridge.xml            the TeXML Bin content (one <Dial><Sip> bridge)
+scripts/place-call.sh       the curl the Bot runs (params: to, from, bin URL)
+scripts/setup-check.sh      verifies Telnyx app, bin, SIP registration, agent reachable
+docs/SETUP.md               the human-readable version of what the Bot automates
+docs/PLAN.md                this plan
+.cursor-plugin/plugin.json  plugin manifest (variables: TELNYX_API_KEY, numbers)
 ```
 
-### Tool surface (what the delegating bot sees)
+No `service/`, no `infra/`, no database, no CI deploy pipeline. Tests shrink to: TeXML/prompt lint, a scripted persona checklist for manual eval, and `setup-check.sh`.
 
-| MCP tool | Purpose |
+### One-time setup (what the skill walks the Bot through)
+
+1. **Telnyx** (browser + API): buy a US DID (~$1/mo), create an outbound voice profile, create a TeXML application, create the hosted TeXML Bin from `texml/bridge.xml`, store the API key on the Bot's computer.
+2. **xAI** (browser): in Voice Agent Builder, create the agent from `prompts/voice-agent.md`, set guardrails, connect the Gmail (and optionally Google Calendar) connector, and connect the Telnyx number via direct SIP.
+3. **Verify**: run `setup-check.sh`, then a test call to the user's own phone.
+
+Steps are also documented for a human in `docs/SETUP.md` — the Bot doing it is convenience, not a requirement.
+
+## Costs
+
+| Item | Cost |
 |---|---|
-| `book_reservation({ restaurant_name, restaurant_phone, window_start, window_end, party_size, booking_name, callback_phone, notes? })` | Queue a reservation call; returns a `task_id` immediately. |
-| `get_task({ task_id })` | Status, structured outcome, transcript. The bot polls or is given the final result when the task completes. |
-| `cancel_task({ task_id })` | Abort a queued or in-flight call. |
-| `place_call({ phone, goal, context })` | (Later) Generic escape hatch: any phone errand described in prose — "call the pharmacy and ask if the prescription is ready." Same machinery, looser prompt. |
-
-### Voice-agent tools (inside the phone call)
-
-| Tool | Purpose |
-|---|---|
-| `report_outcome({ status: booked \| unavailable \| needs_user \| no_answer, confirmed_time?, notes })` | The only way a call is marked booked. Structured outcome → SQLite → SMS → tool result. |
-| `send_dtmf({ digits })` | Navigate IVRs ("press 2 for reservations"). |
-| `hangup()` | End the call after reporting. |
-
-Prompt contract: self-identify as an AI assistant calling on behalf of {name}, state the concrete ask early, negotiate only within the user's time window, read back the final time and name verbatim before accepting, never invent a confirmation.
-
-Answering machines: Telnyx AMD on dial → short scripted voicemail with callback number → `no_answer`, one retry after 20 minutes (max 2 attempts).
-
-## Data model (SQLite)
-
-```
-tasks: id, kind (reservation|generic), payload_json, status
-  (queued|dialing|in_progress|booked|unavailable|no_answer|failed|needs_user),
-  outcome_json, created_at, updated_at
-
-calls: id, task_id, telnyx_call_control_id, grok_conversation_id,
-  started_at, answered_at, ended_at, end_reason, duration_secs,
-  cost_estimate_cents
-
-transcript_events: id, call_id, ts, role (agent|callee|system|tool),
-  content, tool_name?, tool_args?
-```
-
-Status transitions as a real state machine (exhaustive switch), unit-tested.
-
-## Azure infrastructure (cost-first)
-
-| Resource | Choice | ~Idle cost |
-|---|---|---|
-| Container Apps env + 1 app | Consumption, **min replicas 0**, WebSocket ingress | ~$0 idle; per-second billing only while a task runs |
-| Storage account + Azure Files share | SQLite file + call recordings (if enabled) | < $1/mo |
-| Key Vault | `TELNYX_API_KEY`, `TELNYX_PUBLIC_KEY`, `XAI_API_KEY`, `MCP_BEARER_TOKEN`; managed identity access | < $1/mo |
-| Container registry | **GHCR (free)** instead of ACR | $0 |
-| Logging | Container Apps console logs → Log Analytics free allowance; **no App Insights** | ~$0 at personal volume |
-
-**Total idle: roughly $1–2/mo Azure + $1/mo Telnyx DID.** Per reservation-minute: ~$0.0105 Telnyx (outbound + stream) + $0.05–0.08 Grok. A 6-minute booking ≈ $0.40–0.55.
-
-Explicitly cut from the earlier draft: Next.js web app, PostgreSQL server, ACR, App Insights, PostHog, always-on replica, staging environment. History review = `get_task` via the bot, or the SQLite file directly.
-
-Local dev: the service runs on a laptop with Azure Dev Tunnels (or ngrok) for Telnyx webhooks/streams; SQLite is just a local file. `azd up` deploys the one app.
-
-## Repo layout
-
-```
-service/            the one Node service (MCP + REST + webhooks + bridge)
-packages/shared/    types, task state machine, zod schemas
-packages/carrier/   Telnyx adapter behind a carrier-neutral interface
-packages/agent/     Grok session config, prompts, tool schemas
-scripts/            spike-call.ts and operational scripts
-infra/              Bicep + azd (single container app + storage + key vault)
-docs/               this plan, runbook, self-hosting guide
-.cursor-plugin/     plugin.json (Cursor Marketplace manifest + variables schema)
-skills/             SKILL.md teaching an agent when/how to delegate phone tasks
-.mcp.json           MCP server config (Grok Build plugin layout)
-server.json         MCP Registry metadata (name matches package.json mcpName)
-```
-
-pnpm workspaces, Vitest, GitHub Actions → GHCR → `az containerapp update`.
-
-## Open-source & marketplace readiness (decided upfront, cheap now, expensive later)
-
-**Grok Bot is the primary target, and its distribution channel is the Cursor plugin system.** Per xAI's docs: Grok Bot follows the team's existing Cursor plugin and MCP policy (no separate Grok Bot plugin controls), plugins are enabled on the Cursor plugins page with secrets entered as plugin variables, MCP authentication is shared across Cursor + Grok Bot, and eligible plans include a "team marketplace for skills and plugins." In-app, a user attaches the plugin to a task with `@` and references its skill with `/`. So one artifact — a Cursor-format plugin bundling `skills/SKILL.md` + a remote MCP config — covers Grok Bot, Cursor agents, and Cursor team marketplaces simultaneously.
-
-How a stranger adopts it (this flow drives the repo design):
-
-1. Deploy their own PhoneHand instance (`azd up` or laptop + tunnel) with their Telnyx/xAI keys → they get an MCP URL + bearer token.
-2. Install the plugin (marketplace or repo URL) and set two variables: `PHONEHAND_MCP_URL`, `PHONEHAND_MCP_TOKEN`. The plugin's `mcp.json` uses `${VAR}` interpolation, so no fork is needed.
-3. Their Bots now have `book_reservation` / `get_task` / `cancel_task` plus a skill that teaches when and how to use them.
-
-Distribution targets and their hard requirements:
-
-| Target | Mechanism | Hard requirements |
-|---|---|---|
-| **Grok Bot / Cursor Marketplace** (primary) | Public Git repo submitted at [cursor.com/marketplace/publish](https://cursor.com/marketplace/publish); manual security/quality review of every version | `.cursor-plugin/plugin.json` manifest (kebab-case name, description, license, version); **must be open source**; secrets/config declared as `variables` (JSON Schema) so users set keys in the plugin config UI, never hardcoded; every `${VAR}` in `mcp.json` declared; relative paths only. Template: [cursor/plugin-template](https://github.com/cursor/plugin-template). |
-| **Grok Build Plugin Marketplace** (the terminal coding agent — adjacent audience) | PR to [xai-org/plugin-marketplace](https://github.com/xai-org/plugin-marketplace) adding a catalog entry | Remote source pinned to a **full 40-char commit SHA** (release discipline: tag → SHA → PR); plugin layout = `skills/` + `.mcp.json` (+ optional commands/agents/hooks); Grok Build also reads `.cursor-plugin/` equivalents, so the same repo works; regenerate + validate their index scripts in the PR. |
-| **Official MCP Registry** (long-tail discovery for any MCP client, incl. grok.com custom connectors) | `mcp-publisher` CLI (GitHub auth); registry hosts metadata only | For the hosted server, a `server.json` with `remotes: [{ type: "streamable-http", url }]` pointing at the user's own deployment doesn't apply — instead publish the **self-hostable npm package** with `mcpName` in `package.json` character-identical to `name` in `server.json` (`io.github.<owner>/phonehand`); versions must match exactly — automate in the release workflow. |
-
-Upfront practices this forces (all start at commit one, because history is public later):
-
-1. **Clean history**: no secret has ever been committed. `.env.example` only; gitleaks (or GitHub secret scanning + push protection) in CI from the first PR.
-2. **No personal data in the repo**: my phone numbers, restaurant numbers, and real transcripts stay in runtime storage (SQLite/Azure Files), never in fixtures. Test fixtures use `+15555550100`-style numbers and synthetic transcripts.
-3. **Everything parameterized**: caller ID, callback number, booking name, prompts, caps — env/config with zod validation and sane defaults. Nothing "works only for Bryan."
-4. **BYO-keys, no shared infra**: users bring their own Telnyx + xAI keys and deploy their own instance. Ship two run modes documented equally: laptop + dev tunnel (zero cloud) and `azd up` (one command to Azure). The azd template doubles as the "deploy your own" story.
-5. **Release discipline**: changesets (or similar) driving one version across `package.json`, `server.json`, and plugin manifests; git tag per release (Grok marketplace pins SHAs; MCP Registry rejects version drift); CI publishes npm + GHCR image on tag.
-6. **Safety defaults that survive strangers**: this is an autodialer reference — ship with per-day call caps ON, max call duration ON, agent self-identification ON, recording OFF, and a prominent README section: users are responsible for telemarketing/robocall law (TCPA etc.) and call-recording consent in their jurisdiction. Never ship a bulk-calling example.
-7. **Docs as a feature**: README with architecture diagram + cost table + 10-minute quickstart, `SECURITY.md` (reporting + key-handling notes), `CONTRIBUTING.md`, `LICENSE` (Apache-2.0), and the carrier-adapter interface documented so a Twilio adapter is an obvious community PR.
-8. **The skill is part of the product**: `skills/SKILL.md` teaches a delegating Bot when to use `book_reservation` vs `place_call`, what fields to collect from the user before calling (window, party size, booking name, callback number), how to interpret outcomes, and when to escalate to the human. In Grok Bot this surfaces as the `/` skill and `@` plugin attach; the same file installs into Cursor and Grok Build. Written and versioned with the code, not bolted on at publish time.
-9. **Grok Bot specifics to respect**: plugins/connectors are **account-wide** (all of a user's Bots share the computer and installed plugins) — so per-task guardrails live server-side in PhoneHand (caps, budgets), never assumed client-side; hosted-MCP tokens are held by the backend, which is another reason the bearer token must be revocable and scoped to one deployment.
+| Infrastructure | **$0** — nothing deployed |
+| Telnyx DID | ~$1/mo |
+| Telnyx outbound + SIP leg | ~$0.005–0.01/min |
+| Grok voice agent audio | $0.05–0.08/min (xAI) |
+| A 6-minute booking | ≈ $0.40–0.55 |
 
 ## Phases
 
-### Phase 0 — Accounts & spike
-- xAI API key with realtime access; Telnyx account, verification, one US local DID (~$1/mo), Call Control application. (Telnyx KYC is the slow item — do it first.)
-- **Spike** (`scripts/spike-call.ts`): outbound call to my own phone, bridge to Grok with a trivial prompt, prove two-way audio. De-risks the only hard integration before any product code.
+### Phase 0 — Accounts & manual proof
+- Telnyx signup + KYC (the slow item, first), DID, outbound voice profile. xAI account with Voice Agent Builder access.
+- Prove the whole path **by hand, zero code**: console-created Builder agent + SIP-connected number + hand-made TeXML bin + one curl → the agent talks to me on my own phone. If this works, the architecture is validated end-to-end.
 
-### Phase 1 — Vertical slice
-- Bridge with real audio handling (L16, barge-in, DTMF), Telnyx adapter, agent prompt v1, `report_outcome`, SQLite persistence, signed webhook handling.
-- Trigger via REST; outcome + transcript in SQLite; SMS notification. Test target: a number I answer myself pretending to be a restaurant.
+### Phase 1 — The calling assets
+- `prompts/voice-agent.md` v1: self-identify as an AI assistant, state the ask early, negotiate only within the window, verbatim read-back before accepting, then send the outcome email in the rigid format. Voicemail policy (leave callback, don't book).
+- `texml/bridge.xml` with answering-machine detection on the dial; `scripts/place-call.sh`; `scripts/setup-check.sh`.
+- Outcome email format spec (subject grammar + body fields) that both the agent prompt and the skill share.
 
-### Phase 2 — Call-quality hardening
-- AMD + voicemail + retry policy; IVR navigation; hold-music tolerance (VAD tuning, patient no-speech timeouts); enforced read-back; per-call max duration and per-day minute caps; kill switch.
-- Eval harness: scripted "restaurant host" personas (busy host, IVR, voicemail, "we're full") replayed against the agent; assert structured outcomes.
+### Phase 2 — Call quality
+- Persona eval checklist run against the Builder agent (busy host, IVR, voicemail, "we're full", counter-offer): scripted scenarios I answer myself, asserting the outcome email is correct each time.
+- Known-extension IVRs handled via TeXML `send_digits_on_answer`; document the limitation that the agent cannot press mid-call IVR digits in this architecture.
+- Tune Builder guardrails; confirm transcripts/recordings land in the console.
 
-### Phase 3 — MCP surface + Azure deploy
-- Remote MCP server (streamable HTTP + bearer header) exposing `book_reservation` / `get_task` / `cancel_task`; bearer-auth REST for testing.
-- Bicep for the single app + storage + Key Vault; GitHub Actions deploy; webhooks pointed at the Container Apps FQDN. Verify the scale-to-zero wake path end-to-end (submit task from cold → dial succeeds).
-- Connect it to my Grok Bot as a custom MCP server (Plugins surface: name + URL + auth header) and run a real delegated reservation end-to-end from a Bot conversation.
-- Draft `skills/SKILL.md` now, from watching how the Bot actually uses the tools — the skill is informed by real delegation transcripts, not written cold at publish time.
+### Phase 3 — The skill
+- `skills/phonehand/SKILL.md`, drafted from real delegation transcripts: what to collect from the user before calling (window, party size, booking name, callback number), when to call vs decline (business hours, do-not-call judgment), how to fire the curl, how long to wait, how to parse the outcome email, retry policy (max 2 attempts, 20 min apart), and how to report back.
+- Run the full loop from a Grok Bot conversation repeatedly; iterate the skill until it needs no hand-holding.
 
-### Phase 4 — Guardrails & generic calls
-- Spend guards: hard monthly minute budget enforced in the service, alert SMS when 80% consumed.
-- `place_call` generic errand tool once reservations are reliable.
-- Runbook: rotating keys, checking transcripts, raising caps.
+### Phase 4 — Setup automation + packaging
+- Extend the skill with the guided setup flow (Bot performs Telnyx + Builder configuration in its browser; human approves each credentialed step).
+- `.cursor-plugin/plugin.json` (variables: `TELNYX_API_KEY`, `PHONEHAND_FROM_NUMBER`, TeXML app/bin IDs) → submit to the Cursor Marketplace (this is the Grok Bot channel — Grok Bot uses Cursor's plugin system and policies).
+- Tag a release; PR to `xai-org/plugin-marketplace` pinned to the 40-char commit SHA (Grok Build audience — same repo layout works, since Grok Build reads `.cursor-plugin/` equivalents).
+- Stranger test: fresh Telnyx + xAI accounts → working test call, driven only by the skill and README.
 
-### Phase 5 — Publish as open-source reference
-- README polish (quickstart, architecture, cost table, legal notes), `SECURITY.md`, `CONTRIBUTING.md`, sample synthetic call recording/transcript for the README.
-- Finalize the plugin: `.cursor-plugin/plugin.json` with variables schema (`PHONEHAND_MCP_URL`, `PHONEHAND_MCP_TOKEN`), `skills/SKILL.md`, `mcp.json` with `${VAR}` interpolation → submit at cursor.com/marketplace/publish (this is the Grok Bot channel).
-- Tag a release; PR to `xai-org/plugin-marketplace` pinned to that SHA (Grok Build audience).
-- npm publish of the self-hostable server package; `server.json` + `mcp-publisher` → official MCP Registry (long-tail MCP clients, incl. grok.com custom connectors).
-- Stranger test: someone with fresh Telnyx/xAI accounts gets from README → deployed instance → plugin installed in their own Grok Bot → working test call, with no help.
+## Open-source hygiene (from commit one — history becomes public)
 
-## Test strategy
+- No secret ever committed; `.env.example` only; secret scanning in CI.
+- No personal data in the repo: fixture numbers are `+15555550100`-style, transcripts synthetic.
+- Everything parameterized (numbers, booking name, prompt) — nothing works-only-for-Bryan.
+- Safety defaults that survive strangers: agent self-identifies as AI, calling-hours guard and attempt caps in the skill, recording stays inside the user's own xAI console, prominent README note that users own compliance with robocall/recording-consent law. No bulk-calling examples, ever.
+- README with the 3-step adoption contract up top, architecture diagram, cost table; `SECURITY.md`, `CONTRIBUTING.md`, Apache-2.0 `LICENSE`.
 
-- Unit: state machine, webhook signature verification, audio re-framing (20ms chunking), tool JSON schemas.
-- Integration: fake Telnyx stream server (replayed `media` frames) against the real bridge with a mocked Grok WS, and the inverse with recorded Grok sessions.
-- E2E (manual, gated): my own phone → persona harness → a real restaurant.
+## Upgrade path (documented appendix, not built now)
+
+If someone needs structured outcomes without email parsing, server-enforced budgets, or mid-call custom tools, the same repo documents the control-plane upgrade: a Cloudflare Worker (free plan) receiving xAI's `realtime.call.incoming` webhook and driving the session over WebSocket with a `report_outcome` function tool — the [dial-a-repo](https://github.com/zeke/dial-a-repo) pattern. The TeXML bin and Telnyx setup are unchanged; only the xAI side switches from Builder to API. This is the escape hatch, not the default.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| Grok reports a booking that didn't happen | `report_outcome` is the only success path; verbatim read-back required; transcripts kept |
-| IVR/hold music confuses turn-taking | DTMF tool + persona harness + patient no-speech timeouts |
-| Model alias repricing/behavior drift | Pin model version; per-call cost cap |
+| Voice Agent Builder is beta; features/pricing shift | Setup is thin (one agent, one prompt, one connector) — cheap to reconfigure; upgrade path documented if Builder regresses |
+| Outcome email mis-formatted or missing | Rigid format in the prompt + skill treats "no email within N minutes" as `unknown` and checks the console transcript before retrying |
+| Agent invents a confirmation | Prompt requires verbatim read-back before accepting; outcome email must quote the host's confirmation; transcript audit in console |
+| Mid-call IVR ("press 2 for reservations") | `send_digits_on_answer` covers known extensions; otherwise documented limitation — the upgrade path restores full DTMF |
+| Bot-side setup drifts (Telnyx/Builder UIs change) | `setup-check.sh` verifies the invariants (bin content, SIP registration, agent answers); docs/SETUP.md kept UI-agnostic |
 | Telnyx KYC delays | Phase 0 first |
-| Restaurants hang up on AI callers | Self-identify + immediate concrete ask; iterate on the opener from transcripts |
-| WebSocket drops mid-call | Grok session resumption (`conversation_id`); Telnyx stream reconnect; unrecoverable → `no_answer` + retry |
-| Scale-to-zero surprise | Wake is always caused by our own inbound request before any dial; verified explicitly in Phase 3 |
+| No server-side spend enforcement | Telnyx spend cap + xAI spend limit set during setup; skill enforces attempt/hour policy |
