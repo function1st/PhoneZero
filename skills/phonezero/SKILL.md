@@ -19,15 +19,14 @@ Before collecting a task or touching Telnyx, verify these variables are present.
 | `TELNYX_ACCOUNT_SID` | Plugin variable. Telnyx account SID in every TeXML path: `/v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/…`. |
 | `PHONEZERO_FROM_NUMBER` | E.164 DID Telnyx will present as `From`. |
 | `PHONEZERO_TEXML_APP_ID` | TeXML Application SID (`ApplicationSid` on the dial). |
-| `PHONEZERO_TEXML_BIN_URL` | Public TeXML Bin URL (`Url` on the dial). The bin bridges the answered call to `sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`. |
-| `PHONEZERO_XAI_SIP_NUMBER` | Setup-time only. E.164 registered with xAI Direct SIP; already baked into the bin. Not passed on the dial. Usually the **same** number as `PHONEZERO_FROM_NUMBER` (one DID registered with xAI Direct SIP; a second number is not required). |
+| `PHONEZERO_XAI_SIP_NUMBER` | E.164 registered with xAI as `byo_trunk`. Substituted into the inline Texml SIP URI at call time. Usually the **same** number as `PHONEZERO_FROM_NUMBER` (one DID registered with xAI; a second number is not required). |
 | `PHONEZERO_AGENT_NAME` | Spoken name in the TASK BRIEF (`{agent_name}`). |
 | `PHONEZERO_DISCLOSE_AI` | Boolean, default `true`. When true, TASK BRIEF `{disclosure_clause}` is `, an automated assistant,`. When false, empty. The agent still answers truthfully if asked whether it is an AI. |
 | `XAI_API_KEY` | Environment only. Entered once via Grok Bot's secure secret request flow (masked, excluded from transcripts and model context). Used solely for `POST https://api.x.ai/v1/stt`. Never ask for this key in chat. Never echo it. |
 
-Call-time required: `TELNYX_API_KEY` (working MCP), `TELNYX_ACCOUNT_SID`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_TEXML_APP_ID`, `PHONEZERO_TEXML_BIN_URL`, `PHONEZERO_AGENT_NAME`, `XAI_API_KEY`. `PHONEZERO_DISCLOSE_AI` may be absent (treat as `true`). `PHONEZERO_XAI_SIP_NUMBER` is not required at dial if the bin is already configured.
+Call-time required: `TELNYX_API_KEY` (working MCP), `TELNYX_ACCOUNT_SID`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_TEXML_APP_ID`, `PHONEZERO_XAI_SIP_NUMBER`, `PHONEZERO_AGENT_NAME`, `XAI_API_KEY`. `PHONEZERO_DISCLOSE_AI` may be absent (treat as `true`).
 
-If any call-time variable is missing, or the Telnyx MCP is disconnected / 401s: **stop. Do not dial.** Tell the user PhoneZero is not configured and that they should say *"Set up phone calling."* You then walk setup on this computer and browser (Telnyx DID, TeXML app, TeXML bin, Voice Agent Builder + SIP). Enter every plugin variable from plugin.json in Plugins → Configure. Never paste TELNYX_API_KEY or XAI_API_KEY in chat.
+If any call-time variable is missing, or the Telnyx MCP is disconnected / 401s: **stop. Do not dial.** Tell the user PhoneZero is not configured and that they should say *"Set up phone calling."* You then walk setup on this computer and browser (Telnyx DID + KYC remain manual; TeXML app / outbound profile / DID attach / xAI number registration via the Telnyx MCP and xAI API; Voice Agent Builder agent creation is console-only). Enter every plugin variable from plugin.json in Plugins → Configure. Never paste TELNYX_API_KEY or XAI_API_KEY in chat.
 
 - Missing `XAI_API_KEY` after plugin config: stop and start Grok Bot's **secure secret request** flow for `XAI_API_KEY`. Never ask them to paste it in chat. After it is in the environment, re-check.
 
@@ -120,42 +119,43 @@ Voicemail / no-answer: leave the message (the agent does this), increment `attem
 
 ### Dial — Telnyx hosted MCP
 
-Use the Telnyx hosted MCP (auth is the plugin bearer; you never pass the key). Map to:
+Use the Telnyx hosted MCP (auth is the plugin bearer; you never pass the key). The server (`https://api.telnyx.com/v2/mcp`, streamable HTTP, serverInfo `telnyx_api` v3.0.0) exposes **three generic tools**, not per-operation names: `list_api_endpoints` → `get_api_endpoint_schema` → `invoke_api_endpoint`. Use these exact `endpoint_name` values.
 
-`POST /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Calls`
+Place call: `invoke_api_endpoint` with `endpoint_name` `calls_accounts_texml_calls` (REST equivalent: `POST /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Calls`).
 
-JSON body (field names are PascalCase as Telnyx TeXML requires):
+JSON `args` (field names are PascalCase as Telnyx TeXML requires):
 
 ```json
 {
+  "account_sid": "{TELNYX_ACCOUNT_SID}",
   "ApplicationSid": "{PHONEZERO_TEXML_APP_ID}",
   "To": "{restaurant_phone}",
   "From": "{PHONEZERO_FROM_NUMBER}",
-  "Url": "{PHONEZERO_TEXML_BIN_URL}",
-  "UrlMethod": "GET",
+  "Texml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Dial answerOnBridge=\"true\" timeLimit=\"600\"><Sip>sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls</Sip></Dial></Response>",
+  "Record": true,
+  "RecordingChannels": "dual",
   "MachineDetection": "Enable",
-  "DetectionMode": "Premium",
   "AsyncAmd": true,
-  "Timeout": 30,
   "TimeLimit": 600
 }
 ```
 
+Build `Texml` by substituting `{PHONEZERO_XAI_SIP_NUMBER}` into `texml/bridge.xml` (strip XML comments and newlines). Do not send `Url` — the request schema is oneOf: `Url` XOR `Texml` XOR neither.
+
+**Schema lag:** `get_api_endpoint_schema` for `calls_accounts_texml_calls` does **not** list `Texml` (the MCP's OpenAPI snapshot lags the API). `invoke_api_endpoint` still passes `Texml` through and it works. Do not "correct" yourself off the schema — omit `Url` and send `Texml`.
+
 - `To` / `From`: E.164 only. `From` is exactly `PHONEZERO_FROM_NUMBER`.
-- `Url` is exactly `PHONEZERO_TEXML_BIN_URL` (the bin performs the SIP bridge and dual-channel recording). Do not inline TeXML.
-- `UrlMethod` is always `GET`. Bins are static; always GET.
+- Recording is call-level (`Record` true, `RecordingChannels` `dual`). Do not put `record` on `<Dial>`.
+- Restaurant AMD is call-level (`MachineDetection` `Enable`, `AsyncAmd` true). Do not put AMD on `<Sip>` — that would classify the xAI agent, not the restaurant.
 - `TimeLimit` 600s is the per-call duration cap. Do not raise it.
-- `AsyncAmd` must be `true`. Synchronous AMD blocks TeXML waiting for a status callback PhoneZero does not run. Read the AMD result post-hoc from `answered_by` on the call-fetch endpoint (`human` | `machine` | `not_sure`): treat `machine` as voicemail, `not_sure` as human.
+- `AsyncAmd` must be `true`. Synchronous AMD blocks TeXML waiting for a status callback PhoneZero does not run. Read the AMD result post-hoc from `answered_by` on the retrieve-call endpoint (`human` | `machine` | `not_sure`): treat `machine` as voicemail, `not_sure` as human.
 - If the restaurant's reservations extension is known **and** the MCP tool schema includes `SendDigits`, add `"SendDigits": "ww2"` (or the known sequence; `w` = 500ms pause). Mid-call DTMF is not available in this architecture — if you do not know the extension, omit it.
-- Do not set `Record` on this request; recording is the bin's job.
 
 On success, store `sid` / `CallSid` as `call_sid`. On MCP/HTTP error: outcome `failed`. Do not retry in the same turn; tell the user what Telnyx returned (no secrets).
 
 ## 7. Poll for completion
 
-Poll the same MCP:
-
-`GET /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Calls/{call_sid}`
+Poll the same MCP: `invoke_api_endpoint` with `endpoint_name` `retrieve_calls_accounts_texml_calls` and args `account_sid`, `call_sid` (REST equivalent: `GET /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Calls/{call_sid}`). Returns `status`, `duration`, and `answered_by`. Under async AMD, `answered_by` values `human` | `machine` | `not_sure` appear post-hoc.
 
 This endpoint is eventually consistent.
 
@@ -176,8 +176,8 @@ Telnyx does **not** transcribe Dial-verb recordings. TeXML transcription exists 
 
 After a terminal call status:
 
-1. Fetch recordings via the Telnyx MCP: `GET /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Calls/{call_sid}/Recordings.json`. Poll every 15s for up to 3 minutes after call end until a completed recording with a `media_url` exists. If none: outcome `unknown`. Never `booked`.
-2. Download the dual-channel `media_url` to a temp file on this computer (do not commit it; do not paste the URL in chat).
+1. Fetch recordings via the Telnyx MCP: `invoke_api_endpoint` with `endpoint_name` `recordings_json_calls_accounts_texml_recordings_json` (REST equivalent: `GET /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Calls/{call_sid}/Recordings.json`). Response: `recordings[].media_url` (S3 presigned, expires ~600s / ~10 min) and `recordings[].sid`. Poll every 15s for up to 3 minutes after call end until a completed recording with a `media_url` exists. If none: outcome `unknown`. Never `booked`.
+2. Download the dual-channel `media_url` **promptly** to a temp file on this computer (the presigned URL expires in ~10 minutes; do not commit it; do not paste the URL in chat).
 3. Confirm `XAI_API_KEY` is in the environment. If missing: **stop**. Start the secure secret request flow. Never ask for the key in chat. Never echo it. Do not classify `booked`.
 4. Transcribe with xAI STT. `file` must be the last multipart field:
 
@@ -233,7 +233,7 @@ Valid outcome states (exactly one): `booked` | `unavailable` | `no_answer` | `ne
 After successful STT (and the outcome is classified / you are ready to report it), delete both local audio and the Telnyx recording. Scripts delete the Telnyx recording by default after STT; do the same here.
 
 1. Delete the local temp audio file.
-2. Delete the Telnyx recording via the same MCP: `DELETE /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Recordings/{recording_sid}.json`.
+2. Delete the Telnyx recording via the same MCP: `invoke_api_endpoint` with `endpoint_name` `delete_recording_sid_json_recordings_accounts_texml_json` (REST equivalent: `DELETE /v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/Recordings/{recording_sid}.json`; returns 204).
 
 There is no Telnyx transcription to delete.
 

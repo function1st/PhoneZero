@@ -10,6 +10,8 @@ Adoption contract:
 
 Personal use, single user. Open-source (Apache-2.0), distributed through the Grok Bot / Cursor plugin marketplace.
 
+**Status:** implemented and verified end-to-end (Aug 2026).
+
 ## Architecture
 
 Two hosted platforms provide every runtime piece; PhoneZero itself is a skill, prompts, and config.
@@ -23,7 +25,7 @@ Grok Bot (its own cloud computer)
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
 Telnyx dials restaurant (recorded; async AMD on the dial request) ──(answered)──▶
-TeXML Bin bridges the call to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls
+Inline Texml bridges the call to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls
                                   ▼
                   xAI Voice Agent (Builder-configured)
                   negotiates within the window · closing spoken recap
@@ -37,7 +39,7 @@ transcribes it (xAI POST /v1/stt, multichannel)
 |---|---|---|
 | Voice agent (prompt, guardrails, turn-taking, tools) | **xAI Voice Agent Builder** — answers calls arriving on the SIP-connected number | The conversation with the restaurant |
 | Call origination | **Telnyx hosted MCP** (`https://api.telnyx.com/v2/mcp`, streamable HTTP + bearer) called by the Bot | One tool call places the outbound call |
-| Restaurant ↔ agent bridge | **Telnyx-hosted TeXML Bin** — static XML: `<Dial><Sip>sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls</Sip></Dial>` | Telnyx and xAI exchange audio directly over SIP; no middleman |
+| Restaurant ↔ agent bridge | **Inline TeXML** on the call-create request (`Texml` field; template `texml/bridge.xml`) — `<Dial answerOnBridge="true" timeLimit="600"><Sip>sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls</Sip></Dial>`. Recording and AMD are call-level params, not in the XML. No hosted bin. | Telnyx and xAI exchange audio directly over SIP; no middleman |
 | Outcome | **Dual-channel call recording fetched via Telnyx + xAI STT transcription** (`POST /v1/stt`, multichannel). Verified: Telnyx does not transcribe Dial-verb recordings — TeXML transcription exists only for `<Record transcription="true">` and the webhook-dependent `<Transcription>` verb | The agent's closing recap makes the transcript trivially machine-readable; the Bot (an LLM) extracts the outcome |
 | Orchestration | **Grok Bot** guided by `skills/phonezero/SKILL.md` | Plans, confirms, dials, polls, reads, retries, reports in chat |
 | Human audit trail | Builder console (recordings, transcripts, tool traces per call) | Review only — never on the Bot's critical path |
@@ -111,11 +113,13 @@ Patterns adopted: plan-first confirmation before any dial (CALL-E's confirm-toke
 skills/phonezero/SKILL.md   the product: preconditions, collect, plan-first confirm,
                             dial, poll, STT, outcome extraction, delete, report
 prompts/voice-agent.md      Builder system prompt (STATIC BEHAVIOR + TASK BRIEF sections)
-texml/bridge.xml            the TeXML Bin content (one <Dial><Sip> bridge, dual recording)
+texml/bridge.xml            inline TeXML template (SIP bridge; substituted at call time)
+texml/inbound.xml           TeXML app voice_url (inbound-only reject + hangup)
 scripts/place-call.sh       developer-only curl equivalent of the MCP dial
 scripts/get-outcome.sh      developer-only poll → recording → xAI STT → cleanup
-scripts/setup-check.sh      developer-only preflight (auth, DID, TeXML app, bin content;
-                            does NOT verify xAI SIP registration or that the agent answers)
+scripts/setup-check.sh      developer-only preflight (auth, DID, TeXML app, DID↔app
+                            attach; optional xAI BYO registration — not agent answering)
+scripts/provision.sh        developer-only one-time Telnyx + xAI provisioning
 docs/SETUP.md               numbered human setup guide
 docs/PERSONAS.md            persona eval checklist (the regression suite)
 docs/PLAN.md                this plan
@@ -147,7 +151,7 @@ Hygiene from commit one (history becomes public): no secret ever committed, secr
 
 ### Phase 0 — Accounts & manual proof
 - Telnyx signup + KYC (slowest item, first), one US DID, outbound voice profile. xAI account with Voice Agent Builder access.
-- Prove the path by hand, zero code: console-created Builder agent + SIP-connected number + hand-made TeXML bin + one MCP/REST dial → the agent talks to me on my own phone.
+- Prove the path by hand, zero code: console-created Builder agent + SIP-registered number + one MCP/REST dial with inline TeXML → the agent talks to me on my own phone. *(Done — proven Aug 2026: three live calls verified origination, the SIP bridge, agent answer, dual-channel recording, xAI STT, and the Telnyx-MCP dial path.)*
 
 ### Phase 1 — Calling assets
 - `prompts/voice-agent.md` v1 (opener, negotiation rules, recap grammar); `texml/bridge.xml` with dual-channel recording (restaurant AMD lives on the REST/MCP dial request, async mode); developer scripts.

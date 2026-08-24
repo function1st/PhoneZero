@@ -5,18 +5,19 @@
 #
 # place-call.sh — curl equivalent of the Telnyx hosted MCP dial.
 #
-# Production path is the Telnyx hosted MCP. This script POSTs the same
-# TeXML REST initiate-call request for local testing.
+# Production path is the Telnyx hosted MCP:
+#   invoke_api_endpoint endpoint_name=calls_accounts_texml_calls
+# This script POSTs the same TeXML REST initiate-call request for local testing.
 #
 # Endpoint (verified):
 #   POST https://api.telnyx.com/v2/texml/Accounts/{account_sid}/Calls
+#   Request schema is oneOf: Url XOR Texml XOR neither.
 #   https://developers.telnyx.com/api-reference/texml-rest-commands/initiate-an-outbound-call
 #
-# TeXML REST uses CamelCase JSON keys (To / From / Url / MachineDetection).
-# ApplicationSid is required by the OpenAPI schema even when Url is set.
-#
-# AMD: restaurant-leg MachineDetection belongs on THIS request, not on
-# <Dial><Sip> in the TeXML bin (that would classify the xAI agent).
+# TeXML REST uses CamelCase JSON keys (To / From / Texml / MachineDetection).
+# ApplicationSid is required. Recording and restaurant AMD are call-level
+# (Record, RecordingChannels, MachineDetection, AsyncAmd) — not in the XML.
+# AMD on <Sip> would classify the xAI agent, not the restaurant.
 # https://developers.telnyx.com/docs/voice/programmable-voice/texml-answering-machine
 #
 # StatusCallback is omitted (zero-server).
@@ -24,7 +25,7 @@
 # Required env (never echoed):
 #   TELNYX_API_KEY
 #   PHONEZERO_FROM_NUMBER
-#   PHONEZERO_TEXML_BIN_URL
+#   PHONEZERO_XAI_SIP_NUMBER
 #   PHONEZERO_TEXML_APP_ID
 # Optional / auto-resolved:
 #   TELNYX_ACCOUNT_SID — if unset, GET /v2/whoami → data.organization_id
@@ -36,13 +37,14 @@ Usage: place-call.sh [--dry-run] E.164_NUMBER
 
 Place a TeXML outbound call to a US E.164 number and print the Call SID.
 To and PHONEZERO_FROM_NUMBER must match +1 and 10 digits (v1 is US-only).
+Inline Texml bridges the answered call to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai.
 
   --dry-run   Print the request (API key redacted) without sending it.
 
 Required environment:
   TELNYX_API_KEY
   PHONEZERO_FROM_NUMBER              E.164 caller ID on the Telnyx account
-  PHONEZERO_TEXML_BIN_URL            public TeXML Bin URL (static XML)
+  PHONEZERO_XAI_SIP_NUMBER           E.164 registered with xAI (byo_trunk)
   PHONEZERO_TEXML_APP_ID             TeXML Application id (ApplicationSid)
 
 Optional / auto-resolved:
@@ -79,7 +81,7 @@ resolve_account_sid() {
   local tmp code org
   tmp="$(mktemp)"
   code="$(
-    curl -sS \
+    curl -sSg \
       -o "$tmp" \
       -w '%{http_code}' \
       -H "Authorization: Bearer ${TELNYX_API_KEY}" \
@@ -114,38 +116,64 @@ print(org.strip())
   echo "resolved TELNYX_ACCOUNT_SID via /v2/whoami (${TELNYX_ACCOUNT_SID:0:8}…)"
 }
 
-# Build the CamelCase JSON body. python3 avoids interpolation bugs in URLs.
-# Field names verified against InitiateCallRequest:
+# Build inline Texml from texml/bridge.xml: substitute the SIP number,
+# strip comments and whitespace. Fallback: the proven minimal string.
 # https://developers.telnyx.com/api-reference/texml-rest-commands/initiate-an-outbound-call
+build_texml() {
+  python3 -c '
+import os, re
+from pathlib import Path
+sip = os.environ["PHONEZERO_XAI_SIP_NUMBER"]
+minimal = (
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+    "<Response>"
+    "<Dial answerOnBridge=\"true\" timeLimit=\"600\">"
+    "<Sip>sip:%s@sip.voice.x.ai;transport=tls</Sip>"
+    "</Dial>"
+    "</Response>"
+) % sip
+path = os.environ.get("PHONEZERO_BRIDGE_XML") or ""
+if not path or not Path(path).is_file():
+    print(minimal)
+    raise SystemExit(0)
+xml = Path(path).read_text(encoding="utf-8")
+xml = re.sub(r"<!--.*?-->", "", xml, flags=re.DOTALL)
+xml = xml.replace("{PHONEZERO_XAI_SIP_NUMBER}", sip)
+xml = "".join(line.strip() for line in xml.splitlines())
+xml = re.sub(r">\s+<", "><", xml)
+if "{PHONEZERO_XAI_SIP_NUMBER}" in xml:
+    raise SystemExit("error: unsubstituted {PHONEZERO_XAI_SIP_NUMBER} in Texml")
+if "sip.voice.x.ai" not in xml or "<Sip>" not in xml:
+    raise SystemExit("error: Texml missing Sip / sip.voice.x.ai after substitution")
+print(xml)
+'
+}
+
+# Build the CamelCase JSON body. python3 avoids interpolation bugs in XML.
+# Field names verified against InitiateCallRequest. Texml is accepted by
+# the live API even when some OpenAPI snapshots omit it (Url XOR Texml).
 build_payload() {
   python3 -c '
 import json, os
 print(json.dumps({
     "To": os.environ["PHONEZERO_TO"],
     "From": os.environ["PHONEZERO_FROM_NUMBER"],
-    "Url": os.environ["PHONEZERO_TEXML_BIN_URL"],
-    # UrlMethod GET: TeXML Bins are static files; Mission Control setup
-    # uses GET to read the bin.
-    # https://developers.telnyx.com/docs/voice/programmable-voice/texml-setup
-    "UrlMethod": "GET",
-    # ApplicationSid is required by InitiateCallRequest.
-    # https://developers.telnyx.com/api-reference/texml-rest-commands/initiate-an-outbound-call
     "ApplicationSid": os.environ["PHONEZERO_TEXML_APP_ID"],
-    # Restaurant-leg AMD. Enable = classify as soon as machine is identified
-    # (human | machine_start | fax | unknown on the AMD callback).
+    # Inline TeXML (not a hosted bin). Do not also send Url.
+    "Texml": os.environ["PHONEZERO_TEXML"],
+    # Dual-channel recording is call-level (not a Dial attribute).
+    "Record": True,
+    "RecordingChannels": "dual",
+    # Restaurant-leg AMD. Enable = classify as soon as machine is identified.
     # https://developers.telnyx.com/docs/voice/programmable-voice/texml-answering-machine
     "MachineDetection": "Enable",
-    "DetectionMode": "Premium",
     # AsyncAmd MUST be true. Sync AMD (default false) blocks TeXML until a
     # StatusCallback can return new instructions — PhoneZero has no server,
-    # so sync would stall the SIP bridge. AsyncAmdStatusCallback is omitted
-    # (zero-server). The AMD verdict lands on answered_by of the call-fetch
-    # endpoint (GET /v2/texml/Accounts/{account_sid}/Calls/{call_sid};
-    # enum: human | machine | not_sure), not on a webhook.
+    # so sync would stall the SIP bridge. The AMD verdict lands on
+    # answered_by of the call-fetch endpoint (human | machine | not_sure).
     # https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-a-call
     "AsyncAmd": True,
     # Seconds to wait for the restaurant to answer. Range 5–120.
-    # SKILL.md is canonical: Timeout is 30.
     "Timeout": 30,
     # Max call duration in seconds. Range 30–14400, default 14400.
     "TimeLimit": 600,
@@ -230,11 +258,16 @@ fi
 
 require_env TELNYX_API_KEY
 require_env PHONEZERO_FROM_NUMBER
-require_env PHONEZERO_TEXML_BIN_URL
+require_env PHONEZERO_XAI_SIP_NUMBER
 require_env PHONEZERO_TEXML_APP_ID
 
 if ! is_us_e164 "$PHONEZERO_FROM_NUMBER"; then
   echo "error: PHONEZERO_FROM_NUMBER must be a US E.164 number (+1 and 10 digits, e.g. +15555550100)" >&2
+  exit 2
+fi
+
+if ! is_us_e164 "$PHONEZERO_XAI_SIP_NUMBER"; then
+  echo "error: PHONEZERO_XAI_SIP_NUMBER must be a US E.164 number (+1 and 10 digits, e.g. +15555550100)" >&2
   exit 2
 fi
 
@@ -248,7 +281,12 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 2
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PHONEZERO_BRIDGE_XML="${SCRIPT_DIR}/../texml/bridge.xml"
 export PHONEZERO_TO="$TO"
+PHONEZERO_TEXML="$(build_texml)"
+export PHONEZERO_TEXML
+
 resolve_account_sid
 PAYLOAD="$(build_payload)"
 # account_sid path param (URL-encoded):
@@ -270,7 +308,7 @@ TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
 HTTP_CODE="$(
-  curl -sS \
+  curl -sSg \
     -o "$TMP" \
     -w '%{http_code}' \
     -X POST \

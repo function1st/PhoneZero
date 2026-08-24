@@ -49,15 +49,10 @@
         "title": "TeXML application ID",
         "description": "Telnyx TeXML application SID the Bot passes when placing a call."
       },
-      "PHONEZERO_TEXML_BIN_URL": {
-        "type": "string",
-        "title": "TeXML bin URL",
-        "description": "Public URL of the TeXML bin that bridges the answered call to xAI over SIP."
-      },
       "PHONEZERO_XAI_SIP_NUMBER": {
         "type": "string",
         "title": "xAI Direct SIP number",
-        "description": "E.164 number registered with xAI for Direct SIP — usually the same number as PHONEZERO_FROM_NUMBER (no second number required). The TeXML bin dials sip:{this}@sip.voice.x.ai;transport=tls. Fixture example: +15555550101."
+        "description": "E.164 number registered with xAI as byo_trunk — usually the same number as PHONEZERO_FROM_NUMBER (no second number required). Substituted into the inline TeXML SIP URI at call time (sip:{this}@sip.voice.x.ai;transport=tls). Fixture example: +15555550101."
       },
       "PHONEZERO_AGENT_NAME": {
         "type": "string",
@@ -76,7 +71,6 @@
       "TELNYX_ACCOUNT_SID",
       "PHONEZERO_FROM_NUMBER",
       "PHONEZERO_TEXML_APP_ID",
-      "PHONEZERO_TEXML_BIN_URL",
       "PHONEZERO_XAI_SIP_NUMBER",
       "PHONEZERO_AGENT_NAME"
     ]

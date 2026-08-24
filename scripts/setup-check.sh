@@ -3,16 +3,17 @@
 # Grok Bot production path uses the Telnyx hosted MCP and never exports
 # TELNYX_API_KEY into its environment.
 #
-# setup-check.sh — preflight the PhoneZero Telnyx configuration invariants.
+# setup-check.sh — preflight the PhoneZero Telnyx (and optional xAI) invariants.
 #
 # This script verifies exactly:
 #   - TELNYX_API_KEY authenticates (GET /v2/balance)
 #   - account SID resolvable via whoami (TELNYX_ACCOUNT_SID or GET /v2/whoami)
 #   - PHONEZERO_FROM_NUMBER exists on the account
 #   - the TeXML application exists and is active
-#   - the TeXML bin URL GETs and contains <Dial>, <Sip>, sip.voice.x.ai,
-#     and no leftover {PHONEZERO_XAI_SIP_NUMBER} token
-# It does NOT verify xAI SIP registration or that the agent answers.
+#   - the DID is attached to that app (connection_id == PHONEZERO_TEXML_APP_ID)
+#   - if XAI_API_KEY is set: GET /v2/phone-numbers shows the DID registered
+#     with origin byo_trunk; missing agentId is a warning (Builder is console-only)
+# It does NOT verify that the agent answers.
 #
 # Verified endpoints:
 #   GET /v2/balance
@@ -21,19 +22,16 @@
 #     https://developers.telnyx.com/api-reference/phone-number-configurations/list-phone-numbers
 #   GET /v2/texml_applications/{id}
 #     https://developers.telnyx.com/api-reference/texml-applications/retrieve-a-texml-application
-#   GET /v2/texml_applications  (fallback list)
-#     https://developers.telnyx.com/api-reference/texml-applications/list-all-texml-applications
-#   TeXML Bin URL (public GET of static XML)
-#     https://developers.telnyx.com/docs/voice/programmable-voice/texml-setup
-#     https://developers.telnyx.com/docs/voice/programmable-voice/texml-bin-quickstart
+#   GET https://api.x.ai/v2/phone-numbers
 #
 # Required env (never echoed):
 #   TELNYX_API_KEY
 #   PHONEZERO_FROM_NUMBER
 #   PHONEZERO_TEXML_APP_ID
-#   PHONEZERO_TEXML_BIN_URL
 # Optional / auto-resolved:
 #   TELNYX_ACCOUNT_SID — if unset, GET /v2/whoami → data.organization_id
+#   PHONEZERO_XAI_SIP_NUMBER — defaults to PHONEZERO_FROM_NUMBER for the xAI check
+#   XAI_API_KEY — if set, verify BYO registration
 set -euo pipefail
 
 usage() {
@@ -41,22 +39,24 @@ usage() {
 Usage: setup-check.sh
 
 Verify PhoneZero Telnyx configuration. Prints a checklist. Exits non-zero
-if any check fails. Never prints TELNYX_API_KEY.
+if any check fails. Never prints API keys.
 
 Verifies: auth works; account SID resolvable via whoami; FROM number on
-account; TeXML app exists/active; bin URL GETs and contains <Dial>, <Sip>,
-sip.voice.x.ai, and no leftover {PHONEZERO_XAI_SIP_NUMBER} token.
+account; TeXML app exists/active; DID connection_id matches the TeXML app.
+If XAI_API_KEY is set: DID is registered with xAI (origin byo_trunk);
+missing agentId is a warning, not a failure.
 
-Does NOT verify xAI SIP registration or that the agent answers.
+Does NOT verify that the agent answers.
 
 Required environment:
   TELNYX_API_KEY
   PHONEZERO_FROM_NUMBER              E.164 DID on the account (e.g. +15555550100)
   PHONEZERO_TEXML_APP_ID             TeXML Application id
-  PHONEZERO_TEXML_BIN_URL            public TeXML Bin URL
 
-Optional / auto-resolved:
+Optional:
   TELNYX_ACCOUNT_SID                 if unset, GET /v2/whoami → data.organization_id
+  PHONEZERO_XAI_SIP_NUMBER           defaults to PHONEZERO_FROM_NUMBER
+  XAI_API_KEY                        if set, verify xAI BYO registration
 EOF
 }
 
@@ -74,7 +74,7 @@ require_env() {
 telnyx_get() {
   local out_file="$1"
   local url="$2"
-  curl -sS \
+  curl -sSg \
     -o "$out_file" \
     -w '%{http_code}' \
     -H "Authorization: Bearer ${TELNYX_API_KEY}" \
@@ -100,7 +100,7 @@ resolve_account_sid() {
   local tmp code org
   tmp="$(mktemp)"
   code="$(
-    curl -sS \
+    curl -sSg \
       -o "$tmp" \
       -w '%{http_code}' \
       -H "Authorization: Bearer ${TELNYX_API_KEY}" \
@@ -155,9 +155,9 @@ fi
 echo "PhoneZero setup check"
 echo "====================="
 echo "Verifies: auth works; account SID resolvable via whoami; FROM number on"
-echo "account; TeXML app exists/active; bin URL GETs and contains <Dial>, <Sip>,"
-echo "sip.voice.x.ai, and no leftover {PHONEZERO_XAI_SIP_NUMBER} token."
-echo "Does NOT verify xAI SIP registration or that the agent answers."
+echo "account; TeXML app exists/active; DID is attached to that app."
+echo "If XAI_API_KEY is set: DID registered with xAI (origin byo_trunk)."
+echo "Does NOT verify that the agent answers."
 echo
 
 if ! require_env TELNYX_API_KEY; then
@@ -169,14 +169,16 @@ fi
 if ! require_env PHONEZERO_TEXML_APP_ID; then
   FAILS=$((FAILS + 1))
 fi
-if ! require_env PHONEZERO_TEXML_BIN_URL; then
-  FAILS=$((FAILS + 1))
-fi
 
 if [ "$FAILS" -gt 0 ]; then
   echo
   echo "Result: ${FAILS} failure(s) — missing required environment."
   exit 1
+fi
+
+if [ -z "${PHONEZERO_XAI_SIP_NUMBER:-}" ]; then
+  PHONEZERO_XAI_SIP_NUMBER="$PHONEZERO_FROM_NUMBER"
+  export PHONEZERO_XAI_SIP_NUMBER
 fi
 
 resolve_account_sid
@@ -204,16 +206,15 @@ else
   fail "GET /v2/balance HTTP ${CODE} (expected 200)"
 fi
 
-# --- 2. From-number exists on the account -----------------------------
+# --- 2. From-number exists on the account and is attached to the app --
 # filter[phone_number]: "Requires at least three digits. Non-numerical
 # characters will result in no values being returned." The + is a
 # non-numerical character, so strip it for the filter and match E.164
 # exactly in the response.
 # https://developers.telnyx.com/api-reference/phone-number-configurations/list-phone-numbers
 DIGITS="${PHONEZERO_FROM_NUMBER#+}"
-# curl --get --data-urlencode builds filter[phone_number]=...
 PN_CODE="$(
-  curl -sS \
+  curl -sSg \
     -o "${WORKDIR}/numbers.json" \
     -w '%{http_code}' \
     -G \
@@ -227,23 +228,31 @@ PN_CODE="$(
 if [ "$PN_CODE" != "200" ]; then
   fail "list phone numbers HTTP ${PN_CODE}"
 else
-  MATCH="$(
+  PN_INFO="$(
     WANT="$PHONEZERO_FROM_NUMBER" python3 -c '
 import json,os,sys
 d=json.load(sys.stdin)
 want=os.environ["WANT"]
 digits=want.lstrip("+")
-found=False
 for item in (d.get("data") or []):
     num=str(item.get("phone_number") or "")
     if num==want or num.lstrip("+")==digits:
-        found=True
-        break
-print("yes" if found else "no")
+        print("yes")
+        print(item.get("id") or "")
+        print(item.get("connection_id") or "")
+        raise SystemExit(0)
+print("no")
 ' <"${WORKDIR}/numbers.json"
   )"
-  if [ "$MATCH" = "yes" ]; then
+  PN_MATCH="$(printf '%s\n' "$PN_INFO" | sed -n '1p')"
+  PN_CONN="$(printf '%s\n' "$PN_INFO" | sed -n '3p')"
+  if [ "$PN_MATCH" = "yes" ]; then
     pass "PHONEZERO_FROM_NUMBER exists on the account"
+    if [ "$PN_CONN" = "$PHONEZERO_TEXML_APP_ID" ]; then
+      pass "DID connection_id matches PHONEZERO_TEXML_APP_ID"
+    else
+      fail "DID is not attached to PHONEZERO_TEXML_APP_ID (connection_id=${PN_CONN:-empty})"
+    fi
   else
     fail "PHONEZERO_FROM_NUMBER not found among account phone numbers"
   fi
@@ -285,16 +294,14 @@ print(data.get("voice_method") or "")
   else
     fail "TeXML application is not active"
   fi
-  # voice_method get is what TeXML Bin setup recommends for static XML.
-  # https://developers.telnyx.com/docs/voice/programmable-voice/texml-setup
+  # voice_url is fetched only for INBOUND calls (texml/inbound.xml).
   if [ "$APP_VOICE_METHOD" = "get" ] || [ "$APP_VOICE_METHOD" = "GET" ]; then
-    pass "TeXML application voice_method is GET (static bin)"
+    pass "TeXML application voice_method is GET (inbound.xml)"
   else
-    # Not fatal: place-call.sh sends UrlMethod=GET per-call.
-    echo "WARN  TeXML application voice_method=${APP_VOICE_METHOD:-unset} (bin setup docs use GET)"
+    echo "WARN  TeXML application voice_method=${APP_VOICE_METHOD:-unset} (inbound.xml is served GET)"
   fi
   if [ -n "$APP_VOICE_URL" ]; then
-    echo "INFO  application voice_url is set (per-call Url may override it)"
+    echo "INFO  application voice_url=${APP_VOICE_URL} (inbound only; outbound calls carry inline Texml)"
   fi
 elif [ "$APP_CODE" = "404" ]; then
   fail "TeXML application not found (GET /v2/texml_applications/{id} HTTP 404)"
@@ -302,57 +309,64 @@ else
   fail "GET /v2/texml_applications/{id} HTTP ${APP_CODE}"
 fi
 
-# --- 4. TeXML bin URL fetches and looks like the PhoneZero bridge -----
-# Bins are public static XML (no API key). Do not send the Telnyx bearer
-# to a third-party URL.
-case "$PHONEZERO_TEXML_BIN_URL" in
-  https://*)
-    pass "PHONEZERO_TEXML_BIN_URL is https"
-    ;;
-  *)
-    fail "PHONEZERO_TEXML_BIN_URL must be an https URL"
-    ;;
-esac
-
-BIN_CODE="$(
-  curl -sS \
-    -o "${WORKDIR}/bin.xml" \
-    -w '%{http_code}' \
-    -L \
-    --max-time 20 \
-    "$PHONEZERO_TEXML_BIN_URL"
-)"
-if [ "$BIN_CODE" != "200" ]; then
-  fail "TeXML bin URL HTTP ${BIN_CODE}"
+# --- 4. xAI BYO registration (optional) -------------------------------
+# GET https://api.x.ai/v2/phone-numbers
+# Agent creation is console-only; missing agentId is a warning, not a fail.
+if [ -z "${XAI_API_KEY:-}" ]; then
+  echo "INFO  XAI_API_KEY unset — skipping xAI phone-number registration check"
 else
-  pass "TeXML bin URL fetches (HTTP 200)"
-  if grep -q '<Dial' "${WORKDIR}/bin.xml"; then
-    pass "TeXML bin contains <Dial>"
+  XAI_CODE="$(
+    curl -sSg \
+      -o "${WORKDIR}/xai-numbers.json" \
+      -w '%{http_code}' \
+      -H "Authorization: Bearer ${XAI_API_KEY}" \
+      -H "Accept: application/json" \
+      "https://api.x.ai/v2/phone-numbers"
+  )" || true
+  if [ "$XAI_CODE" != "200" ]; then
+    fail "GET https://api.x.ai/v2/phone-numbers HTTP ${XAI_CODE}"
   else
-    fail "TeXML bin does not contain <Dial>"
-  fi
-  if grep -q 'sip.voice.x.ai' "${WORKDIR}/bin.xml"; then
-    pass "TeXML bin contains sip.voice.x.ai"
-  else
-    fail "TeXML bin does not contain sip.voice.x.ai"
-  fi
-  if grep -q '{PHONEZERO_XAI_SIP_NUMBER}' "${WORKDIR}/bin.xml"; then
-    fail "TeXML bin still contains unsubstituted {PHONEZERO_XAI_SIP_NUMBER} (bins are static; substitute at setup)"
-  else
-    pass "TeXML bin placeholder {PHONEZERO_XAI_SIP_NUMBER} has been substituted"
-  fi
-  if grep -q '<Sip' "${WORKDIR}/bin.xml"; then
-    pass "TeXML bin contains <Sip>"
-  else
-    fail "TeXML bin does not contain <Sip>"
+    XAI_INFO="$(
+      WANT="$PHONEZERO_XAI_SIP_NUMBER" python3 -c '
+import json,os,sys
+d=json.load(sys.stdin)
+want=os.environ["WANT"]
+digits=want.lstrip("+")
+items=d.get("phoneNumbers") or d.get("phone_numbers") or []
+for item in items:
+    num=str(item.get("phoneNumber") or item.get("phone_number") or "")
+    if num==want or num.lstrip("+")==digits:
+        print("yes")
+        print(item.get("origin") or "")
+        print(item.get("agentId") or item.get("agent_id") or "")
+        raise SystemExit(0)
+print("no")
+' <"${WORKDIR}/xai-numbers.json"
+    )"
+    XAI_MATCH="$(printf '%s\n' "$XAI_INFO" | sed -n '1p')"
+    XAI_ORIGIN="$(printf '%s\n' "$XAI_INFO" | sed -n '2p')"
+    XAI_AGENT="$(printf '%s\n' "$XAI_INFO" | sed -n '3p')"
+    if [ "$XAI_MATCH" != "yes" ]; then
+      fail "PHONEZERO_XAI_SIP_NUMBER not registered with xAI (GET /v2/phone-numbers)"
+    else
+      if [ "$XAI_ORIGIN" = "byo_trunk" ]; then
+        pass "DID is registered with xAI (origin=byo_trunk)"
+      else
+        fail "xAI registration origin is ${XAI_ORIGIN:-empty}, expected byo_trunk"
+      fi
+      if [ -n "$XAI_AGENT" ]; then
+        pass "xAI agentId is attached"
+      else
+        echo "WARN  no xAI agentId attached — create the agent in Voice Agent Builder (console-only), then PATCH /v2/phone-numbers/{id} with fieldMask agent_id"
+      fi
+    fi
   fi
 fi
 
 echo
 echo "Scope: auth works; account SID resolvable via whoami; FROM number on"
-echo "account; TeXML app exists/active; bin URL GETs and contains <Dial>, <Sip>,"
-echo "sip.voice.x.ai, and no leftover {PHONEZERO_XAI_SIP_NUMBER} token."
-echo "Not verified: xAI SIP registration; agent answers."
+echo "account; TeXML app exists/active; DID attached to that app."
+echo "Not verified: agent answers."
 if [ "$FAILS" -gt 0 ]; then
   echo "Result: ${FAILS} failure(s)"
   exit 1

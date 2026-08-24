@@ -6,22 +6,24 @@
 # get-outcome.sh — poll a TeXML call to a terminal status, download a
 # completed Dial-verb recording, and transcribe it with xAI STT.
 #
-# Call status (eventually consistent):
+# Call status (eventually consistent; MCP: retrieve_calls_accounts_texml_calls):
 #   GET /v2/texml/Accounts/{account_sid}/Calls/{call_sid}
 #   https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-a-call
 #   AMD verdict is answered_by on that resource (human | machine | not_sure),
 #   because place-call.sh sends AsyncAmd=true and omits StatusCallback.
 #
-# Recordings:
+# Recordings (MCP: recordings_json_calls_accounts_texml_recordings_json):
 #   GET /v2/texml/Accounts/{account_sid}/Calls/{call_sid}/Recordings.json
 #   https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-recordings-for-a-call
+#   recordings[].media_url is an S3 presigned URL (expires ~600s). Download promptly.
 #   Only status=completed with a non-empty media_url is downloaded.
 #
 # Default transcript: POST https://api.x.ai/v1/stt (multipart).
 #   https://docs.x.ai/developers/model-capabilities/audio/speech-to-text
 #
-# After successful STT, DELETE the Telnyx recording unless --keep-remote:
+# After successful STT, DELETE the Telnyx recording and local audio unless --keep:
 #   DELETE /v2/texml/Accounts/{account_sid}/Recordings/{recording_sid}.json
+#   MCP: delete_recording_sid_json_recordings_accounts_texml_json (204)
 #   https://developers.telnyx.com/api-reference/texml-rest-commands/delete-recording-resource
 #
 # Exit codes:
@@ -39,15 +41,17 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: get-outcome.sh [--timeout SECONDS] [--interval SECONDS] [--rec-interval SECONDS] [--keep-audio] [--keep-remote] CALL_SID
+Usage: get-outcome.sh [--timeout SECONDS] [--interval SECONDS] [--rec-interval SECONDS] [--keep] [--keep-audio] [--keep-remote] CALL_SID
 
 Poll a TeXML call until it reaches a terminal status, download a
-completed recording, and transcribe with xAI STT (multichannel). Prints
-answered_by (AMD) and the per-channel transcript. Never prints media_url.
+completed recording (presigned media_url expires ~10 min), and
+transcribe with xAI STT (multichannel). Prints answered_by (AMD) and
+the per-channel transcript. Never prints media_url.
 
   --timeout SECONDS         Live-call poll timeout (default: 720)
   --interval SECONDS        Live-call poll interval (default: 10)
   --rec-interval SECONDS    Recordings poll interval (default: 15)
+  --keep                    Keep local audio and the Telnyx recording
   --keep-audio              Keep downloaded recording files in cwd
                             (default: delete temp audio on exit)
   --keep-remote             Do not DELETE the Telnyx recording after STT
@@ -80,7 +84,7 @@ resolve_account_sid() {
   local tmp code org
   tmp="$(mktemp)"
   code="$(
-    curl -sS \
+    curl -sSg \
       -o "$tmp" \
       -w '%{http_code}' \
       -H "Authorization: Bearer ${TELNYX_API_KEY}" \
@@ -124,7 +128,7 @@ urlencode() {
 telnyx_get() {
   local out_file="$1"
   local url="$2"
-  curl -sS \
+  curl -sSg \
     -o "$out_file" \
     -w '%{http_code}' \
     -H "Authorization: Bearer ${TELNYX_API_KEY}" \
@@ -132,20 +136,20 @@ telnyx_get() {
     "$url"
 }
 
-# Two-step media fetch so Authorization is not forwarded on cross-origin
-# redirects. First hop: no -L, with bearer. If 3xx, GET Location without
-# the header (further hops may follow with -L, still without the bearer).
+# media_url is an S3 presigned URL (expires ~600s). Extra headers (including
+# the Telnyx bearer) invalidate the signature. Download promptly, no auth.
+# Fallback: Telnyx-hosted URL that 3xxs — follow Location without the bearer.
 download_media() {
   local dest="$1"
   local media_url="$2"
   local hdr="${WORKDIR}/media.hdr"
   local code loc
   code="$(
-    curl -sS \
+    curl -sSg \
       -D "$hdr" \
       -o "$dest" \
       -w '%{http_code}' \
-      -H "Authorization: Bearer ${TELNYX_API_KEY}" \
+      --max-time 60 \
       "$media_url"
   )" || true
   case "$code" in
@@ -156,7 +160,7 @@ download_media() {
     301|302|303|307|308)
       loc="$(
         python3 -c '
-import os,sys
+import sys
 from urllib.parse import urljoin
 hdr_path, base = sys.argv[1], sys.argv[2]
 loc=""
@@ -172,10 +176,11 @@ print(urljoin(base, loc) if loc else "")
         echo "$code"
         return 0
       fi
-      curl -sS \
+      curl -sSg \
         -o "$dest" \
         -w '%{http_code}' \
         -L \
+        --max-time 60 \
         "$loc"
       return 0
       ;;
@@ -216,7 +221,7 @@ xai_stt() {
   local audio_path="$1"
   local filename="$2"
   local out_file="$3"
-  curl -sS \
+  curl -sSg \
     -o "$out_file" \
     -w '%{http_code}' \
     -X POST \
@@ -306,7 +311,7 @@ delete_remote_recording() {
   rec_enc="$(urlencode "$rec_sid")"
   del_url="https://api.telnyx.com/v2/texml/Accounts/${ACCOUNT_SID_ENC}/Recordings/${rec_enc}.json"
   code="$(
-    curl -sS \
+    curl -sSg \
       -o "${WORKDIR}/delete.json" \
       -w '%{http_code}' \
       -X DELETE \
@@ -366,6 +371,11 @@ while [ $# -gt 0 ]; do
       fi
       REC_INTERVAL_SECS="$2"
       shift 2
+      ;;
+    --keep)
+      KEEP_AUDIO=1
+      KEEP_REMOTE=1
+      shift
       ;;
     --keep-audio)
       KEEP_AUDIO=1
@@ -430,6 +440,8 @@ resolve_account_sid
 ACCOUNT_SID_ENC="$(urlencode "$TELNYX_ACCOUNT_SID")"
 CALL_SID_ENC="$(urlencode "$CALL_SID")"
 
+# REST equivalents of retrieve_calls_accounts_texml_calls and
+# recordings_json_calls_accounts_texml_recordings_json.
 CALL_URL="https://api.telnyx.com/v2/texml/Accounts/${ACCOUNT_SID_ENC}/Calls/${CALL_SID_ENC}"
 # https://developers.telnyx.com/api-reference/texml-rest-commands/fetch-recordings-for-a-call
 RECORDINGS_URL="${CALL_URL}/Recordings.json"

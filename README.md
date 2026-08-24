@@ -22,8 +22,8 @@ Grok Bot (its own cloud computer)
   │ 2. presents the call plan in chat; on my yes:
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
-Telnyx dials restaurant (recorded, AMD on) ──(answered)──▶
-TeXML Bin bridges the call to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls
+Telnyx dials restaurant (call-level Record dual + async AMD) ──(answered)──▶
+Inline Texml bridges to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls
                                   ▼
                   xAI Voice Agent (Builder-configured)
                   negotiates within the window · closing spoken recap
@@ -32,6 +32,8 @@ Grok Bot polls for call completion, fetches recording media_url
 (Telnyx MCP) → transcribes with xAI STT (POST /v1/stt, multichannel)
 ──▶ confirms outcome to me in chat · books my calendar if asked
 ```
+
+**Verified (Aug 2026):** the full pipeline — MCP dial with inline Texml → SIP bridge → Builder agent answers → dual-channel recording → xAI STT transcript → recording deletion — was proven end-to-end.
 
 ## Cost
 
@@ -45,7 +47,7 @@ Grok Bot polls for call completion, fetches recording media_url
 
 ## How it works
 
-The Bot plans the call in chat and waits for your yes. One Telnyx MCP tool call originates the outbound leg from your DID. On answer, a static TeXML bin bridges audio to an xAI Voice Agent over SIP (`sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`). The agent negotiates only inside the window you approved, reads the reservation back before accepting, and ends with a spoken recap.
+The Bot plans the call in chat and waits for your yes. One Telnyx MCP tool call originates the outbound leg from your DID. The call-create request carries **inline TeXML** (`Texml` field; template `texml/bridge.xml`) that bridges the answered call to an xAI Voice Agent over SIP (`sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`). There is no hosted TeXML bin. Dual-channel recording and restaurant AMD are call-level params. The agent negotiates only inside the window you approved, reads the reservation back before accepting, and ends with a spoken recap.
 
 Telnyx cannot transcribe Dial-verb recordings, so the default outcome path is: fetch the recording `media_url` through the same Telnyx MCP, then transcribe with xAI STT (`POST /v1/stt`, multichannel). xAI exposes no Builder call-log API; this is the transcript. The Bot extracts the outcome from that STT result. Nothing of this stack runs on a machine you operate.
 

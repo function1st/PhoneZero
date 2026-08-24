@@ -3,7 +3,7 @@
 ## Dev setup
 
 1. Fork and clone. Do not put real keys or numbers in the tree.
-2. Read [docs/PLAN.md](docs/PLAN.md) and [docs/SETUP.md](docs/SETUP.md). The skill, voice prompt, and TeXML bin are the product; this repo's packaging is the marketplace wrapper.
+2. Read [docs/PLAN.md](docs/PLAN.md) and [docs/SETUP.md](docs/SETUP.md). The skill, voice prompt, and inline TeXML template are the product; this repo's packaging is the marketplace wrapper.
 3. Install the plugin locally (or point Grok Bot at your branch) and fill the plugin variables from `.cursor-plugin/plugin.json` on a dedicated Telnyx account. Enter `XAI_API_KEY` via Grok Bot's secure secret request flow (not a plugin variable; used only for `POST /v1/stt`). Use fixture numbers in docs and fixtures only (`+15555550100`-style).
 4. Run `scripts/setup-check.sh` after any TeXML, SIP, or Builder change.
 5. CI must stay green: secret scan, `shellcheck` on `scripts/*.sh`, `xmllint --noout` on `texml/*.xml`, and the phone-number guard.
@@ -15,7 +15,7 @@ The persona checklist is the regression suite. After any change to `prompts/voic
 ## Pull requests
 
 - One concern per PR. Say which persona you re-ran, or why a prompt-only change skipped the live pass.
-- Parameterize everything. No account SIDs, bin URLs, or agent IDs that belong to a real tenant.
+- Parameterize everything. No account SIDs, application IDs, or agent IDs that belong to a real tenant.
 - Do not add a server, webhook, or tunnel to the default path. That belongs in the control-plane appendix, not v1.
 - Keep disclosure default **on**, calling US-only, and attempt/hours caps intact unless the PR is explicitly changing a safety default — and then say so in the title.
 
