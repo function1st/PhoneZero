@@ -17,8 +17,8 @@ Two hosted platforms already provide every piece the old service designs (Azure 
 | Voice agent session (prompt, tools, turn-taking) | Our media bridge / control WebSocket | **xAI Voice Agent Builder** — a console-configured agent answers calls on the SIP-connected number; no `realtime.call.incoming` webhook, no session code |
 | Originate the restaurant call | Our orchestrator + carrier adapter | **One Telnyx REST call** from Grok Bot's own computer (`POST /v2/texml/Accounts/{sid}/Calls`) |
 | Bridge restaurant ↔ voice agent | Our media relay | **Telnyx-hosted TeXML Bin** (static XML: `<Dial><Sip>sip:{number}@sip.voice.x.ai;transport=tls</Sip></Dial>`) — Telnyx bridges the answered call into xAI's SIP endpoint |
-| Structured outcome | `report_outcome` tool → SQLite → SMS | **Builder's Gmail / Google Calendar connectors**: the voice agent emails a rigidly formatted outcome (and can put the confirmed reservation on the calendar itself); Grok Bot reads the email |
-| Task state, history, transcripts | SQLite / D1 | **Builder observability** (every call recorded + transcribed + tool traces in the xAI console) + the outcome emails |
+| Structured outcome | `report_outcome` tool → SQLite → SMS | **The call transcript itself**: Builder records + transcribes every call with tool traces; the agent ends each call with a spoken structured recap, and Grok Bot — an LLM — reads the transcript and extracts the outcome. No delivery channel, no format parsing |
+| Task state, history, transcripts | SQLite / D1 | **Builder observability** (xAI console / API) — the system of record for every call |
 | MCP endpoint for the Bot | Hosted MCP server | **Not needed** — the "tool" is the Bot running one `curl` from its computer, taught by `SKILL.md` |
 
 ### Per-task flow
@@ -34,9 +34,10 @@ Telnyx dials restaurant ──(answered)──▶ TeXML Bin bridges to sip:{num}
                                               ▼
                               xAI Voice Agent (Builder-configured)
                               talks to host · negotiates within window
-                              on completion: sends outcome email (Gmail connector)
+                              ends with a spoken structured recap
                                               ▼
-Grok Bot reads outcome email ──▶ reports back to me / adds to my calendar
+Grok Bot polls Telnyx for call completion, then reads the call's
+transcript + tool log from xAI ──▶ extracts outcome, reports back to me
 ```
 
 The restaurant-side audio never touches user infrastructure; Telnyx and xAI talk SIP directly.
@@ -47,8 +48,8 @@ The restaurant-side audio never touches user infrastructure; Telnyx and xAI talk
 |---|---|---|
 | Telephony | **Telnyx** (TeXML REST + hosted TeXML Bins + direct SIP to xAI) | The only carrier work is one outbound-call REST request and a static hosted bin — no webhooks, no media streaming, no user server. Twilio equivalents (TwiML Bins) exist, so a Twilio variant is a docs PR. |
 | Voice agent | **xAI Voice Agent Builder** (beta) on a SIP-connected Telnyx number | Owns the call session, prompt, guardrails, tools, recordings, and transcripts. Free provisioned number not used — the Telnyx number connects via direct SIP so *we* can originate calls on it. |
-| Outcome channel | **Formatted email via Builder's Gmail connector** (calendar write as a bonus) | The only serverless way to get a machine-readable result out of the call. Rigid subject format (`[PhoneHand] BOOKED 19:15 Joe's Pizza …`) so the Bot parses reliably. Transcript in the xAI console is the audit trail. |
-| Orchestrator | **Grok Bot itself**, guided by `skills/SKILL.md` | The Bot has a persistent computer, terminal, browser, and Gmail access. It fires the call, waits, reads the outcome, retries per policy, and reports back. Retries/scheduling use Bot routines — no queue infra. |
+| Outcome channel | **The transcript** — Builder records/transcribes every call; the agent prompt requires a closing spoken recap ("Confirming: booked, Friday 7:15, party of 2, under {name}"); the Bot reads the transcript (xAI API if exposed, else its own browser in the console) and extracts the outcome | Zero extra products, zero connectors, zero format parsing — the reader is an LLM, and reading a conversation is what it's best at. The call the Bot placed maps 1:1 to the call it looks up. Gmail/Calendar connectors stay **optional human conveniences** (confirmation email, event on the calendar), not the machine channel. A shared Notion/Linear row (both sides have native connectors) is the documented structured alternative for users who want a task board. |
+| Orchestrator | **Grok Bot itself**, guided by `skills/SKILL.md` | The Bot has a persistent computer, terminal, and browser. It fires the call, polls Telnyx for completion, reads the transcript, retries per policy, and reports back. Retries/scheduling use Bot routines — no queue infra. |
 | Guardrails | Telnyx spend caps + xAI spend limits + skill-encoded policy (max attempts, calling hours, confirmation read-back in the agent prompt) | Nothing server-side exists to enforce caps, so the money-level backstops live in the two vendor dashboards. Acceptable for personal use; documented honestly. |
 | License & naming | **Apache-2.0**, neutral name | Cursor Marketplace requires open source; avoid xAI/Telnyx trademarks in the name. |
 
@@ -70,7 +71,7 @@ No `service/`, no `infra/`, no database, no CI deploy pipeline. Tests shrink to:
 ### One-time setup (what the skill walks the Bot through)
 
 1. **Telnyx** (browser + API): buy a US DID (~$1/mo), create an outbound voice profile, create a TeXML application, create the hosted TeXML Bin from `texml/bridge.xml`, store the API key on the Bot's computer.
-2. **xAI** (browser): in Voice Agent Builder, create the agent from `prompts/voice-agent.md`, set guardrails, connect the Gmail (and optionally Google Calendar) connector, and connect the Telnyx number via direct SIP.
+2. **xAI** (browser): in Voice Agent Builder, create the agent from `prompts/voice-agent.md`, set guardrails, and connect the Telnyx number via direct SIP. Optionally connect Gmail / Google Calendar for human-facing confirmations.
 3. **Verify**: run `setup-check.sh`, then a test call to the user's own phone.
 
 Steps are also documented for a human in `docs/SETUP.md` — the Bot doing it is convenience, not a requirement.
@@ -92,17 +93,18 @@ Steps are also documented for a human in `docs/SETUP.md` — the Bot doing it is
 - Prove the whole path **by hand, zero code**: console-created Builder agent + SIP-connected number + hand-made TeXML bin + one curl → the agent talks to me on my own phone. If this works, the architecture is validated end-to-end.
 
 ### Phase 1 — The calling assets
-- `prompts/voice-agent.md` v1: self-identify as an AI assistant, state the ask early, negotiate only within the window, verbatim read-back before accepting, then send the outcome email in the rigid format. Voicemail policy (leave callback, don't book).
+- `prompts/voice-agent.md` v1: self-identify as an AI assistant, state the ask early, negotiate only within the window, verbatim read-back before accepting, then **close every call with the spoken structured recap** ("Confirming: booked / not booked, {time}, party of {n}, under {name}"). Voicemail policy (leave callback, don't book).
 - `texml/bridge.xml` with answering-machine detection on the dial; `scripts/place-call.sh`; `scripts/setup-check.sh`.
-- Outcome email format spec (subject grammar + body fields) that both the agent prompt and the skill share.
+- The recap grammar spec shared by the agent prompt and the skill (what the Bot looks for in the transcript's closing lines).
+- Verify at this phase whether call transcripts are exposed via xAI API; if not, the skill's transcript step uses the Bot's browser on the console. Either way works — pick the sturdier one once observed.
 
 ### Phase 2 — Call quality
-- Persona eval checklist run against the Builder agent (busy host, IVR, voicemail, "we're full", counter-offer): scripted scenarios I answer myself, asserting the outcome email is correct each time.
+- Persona eval checklist run against the Builder agent (busy host, IVR, voicemail, "we're full", counter-offer): scripted scenarios I answer myself, asserting the closing recap in the transcript is correct each time.
 - Known-extension IVRs handled via TeXML `send_digits_on_answer`; document the limitation that the agent cannot press mid-call IVR digits in this architecture.
 - Tune Builder guardrails; confirm transcripts/recordings land in the console.
 
 ### Phase 3 — The skill
-- `skills/phonehand/SKILL.md`, drafted from real delegation transcripts: what to collect from the user before calling (window, party size, booking name, callback number), when to call vs decline (business hours, do-not-call judgment), how to fire the curl, how long to wait, how to parse the outcome email, retry policy (max 2 attempts, 20 min apart), and how to report back.
+- `skills/phonehand/SKILL.md`, drafted from real delegation transcripts: what to collect from the user before calling (window, party size, booking name, callback number), when to call vs decline (business hours, do-not-call judgment), how to fire the curl, how to poll Telnyx for call completion, how to fetch and read the transcript, retry policy (max 2 attempts, 20 min apart), and how to report back.
 - Run the full loop from a Grok Bot conversation repeatedly; iterate the skill until it needs no hand-holding.
 
 ### Phase 4 — Setup automation + packaging
@@ -121,15 +123,15 @@ Steps are also documented for a human in `docs/SETUP.md` — the Bot doing it is
 
 ## Upgrade path (documented appendix, not built now)
 
-If someone needs structured outcomes without email parsing, server-enforced budgets, or mid-call custom tools, the same repo documents the control-plane upgrade: a Cloudflare Worker (free plan) receiving xAI's `realtime.call.incoming` webhook and driving the session over WebSocket with a `report_outcome` function tool — the [dial-a-repo](https://github.com/zeke/dial-a-repo) pattern. The TeXML bin and Telnyx setup are unchanged; only the xAI side switches from Builder to API. This is the escape hatch, not the default.
+If someone needs hard-structured outcomes (a tool call, not a transcript read), server-enforced budgets, or mid-call custom tools, the same repo documents the control-plane upgrade: a Cloudflare Worker (free plan) receiving xAI's `realtime.call.incoming` webhook and driving the session over WebSocket with a `report_outcome` function tool — the [dial-a-repo](https://github.com/zeke/dial-a-repo) pattern. The TeXML bin and Telnyx setup are unchanged; only the xAI side switches from Builder to API. This is the escape hatch, not the default.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
 | Voice Agent Builder is beta; features/pricing shift | Setup is thin (one agent, one prompt, one connector) — cheap to reconfigure; upgrade path documented if Builder regresses |
-| Outcome email mis-formatted or missing | Rigid format in the prompt + skill treats "no email within N minutes" as `unknown` and checks the console transcript before retrying |
-| Agent invents a confirmation | Prompt requires verbatim read-back before accepting; outcome email must quote the host's confirmation; transcript audit in console |
+| Transcript missing or delayed after call end | Skill waits for Telnyx call-completion first, then polls the transcript with a timeout; treats absence as `unknown` (never `booked`) before retrying |
+| Agent invents a confirmation | Prompt requires verbatim read-back before accepting; the Bot only reports `booked` when the transcript shows the host confirming the recap; full audio in console as final arbiter |
 | Mid-call IVR ("press 2 for reservations") | `send_digits_on_answer` covers known extensions; otherwise documented limitation — the upgrade path restores full DTMF |
 | Bot-side setup drifts (Telnyx/Builder UIs change) | `setup-check.sh` verifies the invariants (bin content, SIP registration, agent answers); docs/SETUP.md kept UI-agnostic |
 | Telnyx KYC delays | Phase 0 first |
