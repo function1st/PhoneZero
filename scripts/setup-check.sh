@@ -134,10 +134,11 @@ if [ "$FAILS" -gt 0 ]; then
 fi
 
 # Do not print the key. Only confirm it is non-empty (already) and works.
-if [[ ! "${PHONEZERO_FROM_NUMBER}" =~ ^\+[1-9][0-9]{7,14}$ ]]; then
-  fail "PHONEZERO_FROM_NUMBER is not E.164 (e.g. +15555550100)"
+# US-only in v1 — must match the dialer's guard in place-call.sh (is_us_e164).
+if [[ ! "${PHONEZERO_FROM_NUMBER}" =~ ^\+1[0-9]{10}$ ]]; then
+  fail "PHONEZERO_FROM_NUMBER is not a US E.164 number (+1 and 10 digits, e.g. +15555550100)"
 else
-  pass "PHONEZERO_FROM_NUMBER looks like E.164"
+  pass "PHONEZERO_FROM_NUMBER is US E.164"
 fi
 
 WORKDIR="$(mktemp -d)"

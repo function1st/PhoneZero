@@ -23,7 +23,7 @@ Grok Bot (its own cloud computer)
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
 Telnyx dials restaurant (recorded; async AMD on the dial request) ──(answered)──▶
-TeXML Bin bridges the call to sip:{number}@sip.voice.x.ai;transport=tls
+TeXML Bin bridges the call to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls
                                   ▼
                   xAI Voice Agent (Builder-configured)
                   negotiates within the window · closing spoken recap
@@ -37,7 +37,7 @@ transcribes it (xAI POST /v1/stt, multichannel)
 |---|---|---|
 | Voice agent (prompt, guardrails, turn-taking, tools) | **xAI Voice Agent Builder** — answers calls arriving on the SIP-connected number | The conversation with the restaurant |
 | Call origination | **Telnyx hosted MCP** (`https://api.telnyx.com/v2/mcp`, streamable HTTP + bearer) called by the Bot | One tool call places the outbound call |
-| Restaurant ↔ agent bridge | **Telnyx-hosted TeXML Bin** — static XML: `<Dial><Sip>sip:{number}@sip.voice.x.ai;transport=tls</Sip></Dial>` | Telnyx and xAI exchange audio directly over SIP; no middleman |
+| Restaurant ↔ agent bridge | **Telnyx-hosted TeXML Bin** — static XML: `<Dial><Sip>sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls</Sip></Dial>` | Telnyx and xAI exchange audio directly over SIP; no middleman |
 | Outcome | **Dual-channel call recording fetched via Telnyx + xAI STT transcription** (`POST /v1/stt`, multichannel). Verified: Telnyx does not transcribe Dial-verb recordings — TeXML transcription exists only for `<Record transcription="true">` and the webhook-dependent `<Transcription>` verb | The agent's closing recap makes the transcript trivially machine-readable; the Bot (an LLM) extracts the outcome |
 | Orchestration | **Grok Bot** guided by `skills/phonezero/SKILL.md` | Plans, confirms, dials, polls, reads, retries, reports in chat |
 | Human audit trail | Builder console (recordings, transcripts, tool traces per call) | Review only — never on the Bot's critical path |

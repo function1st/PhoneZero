@@ -23,7 +23,7 @@ Grok Bot (its own cloud computer)
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
 Telnyx dials restaurant (recorded, AMD on) ──(answered)──▶
-TeXML Bin bridges the call to sip:{number}@sip.voice.x.ai;transport=tls
+TeXML Bin bridges the call to sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls
                                   ▼
                   xAI Voice Agent (Builder-configured)
                   negotiates within the window · closing spoken recap
@@ -45,7 +45,7 @@ Grok Bot polls for call completion, fetches recording media_url
 
 ## How it works
 
-The Bot plans the call in chat and waits for your yes. One Telnyx MCP tool call originates the outbound leg from your DID. On answer, a static TeXML bin bridges audio to an xAI Voice Agent over SIP (`sip:{number}@sip.voice.x.ai;transport=tls`). The agent negotiates only inside the window you approved, reads the reservation back before accepting, and ends with a spoken recap.
+The Bot plans the call in chat and waits for your yes. One Telnyx MCP tool call originates the outbound leg from your DID. On answer, a static TeXML bin bridges audio to an xAI Voice Agent over SIP (`sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`). The agent negotiates only inside the window you approved, reads the reservation back before accepting, and ends with a spoken recap.
 
 Telnyx cannot transcribe Dial-verb recordings, so the default outcome path is: fetch the recording `media_url` through the same Telnyx MCP, then transcribe with xAI STT (`POST /v1/stt`, multichannel). xAI exposes no Builder call-log API; this is the transcript. The Bot extracts the outcome from that STT result. Nothing of this stack runs on a machine you operate.
 
@@ -59,7 +59,7 @@ Human-readable walkthrough of the same work the Bot automates: **[docs/SETUP.md]
 
 - **Recording notice.** The voice-agent opener states that the call is on a recorded line. That is the consent-by-continuing mechanism; if the callee objects, the agent ends politely and the Bot reports `needs_user`.
 - **AI disclosure.** The `automated assistant` clause is a plugin variable (`PHONEZERO_DISCLOSE_AI`) and **defaults to on**. The agent always answers truthfully if asked whether it is an AI.
-- **US-only default.** v1 calling is US destinations only. Other countries unlock when a written policy exists for that jurisdiction.
+- **US destinations only in v1.** Other countries unlock when a written policy exists for that jurisdiction.
 - **You own compliance** in the jurisdiction of every call you place. PhoneZero does not choose the law for you.
 - **Deletion is not consent.** Deleting a recording after transcription does not exempt the capture from consent laws. Real-time transcription is interception in the same all-party-consent states as storing the audio.
 - **Not legal advice.** This section is a product default, not counsel. Get a lawyer before you rely on it.

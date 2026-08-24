@@ -27,7 +27,7 @@ Fixture numbers in this guide are reserved (`+15555550100`-style). Never commit 
     |---|---|---|
     | `{PHONEZERO_XAI_SIP_NUMBER}` | The E.164 registered in step 9 (normally the same DID as `PHONEZERO_FROM_NUMBER`) | `PHONEZERO_XAI_SIP_NUMBER` |
 
-    The published bin must contain `sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls` with the placeholder substituted — no leftover `{PHONEZERO_XAI_SIP_NUMBER}` token. The bin ships **dual-channel recording**. It does **not** ship AMD: AMD on `<Sip>` would classify the xAI agent, not the restaurant. Restaurant AMD is on the REST/MCP initiate-call body (`MachineDetection`, `AsyncAmd` true). Do not add a public webhook server.
+    A correctly published bin contains your real number in the SIP URI — verify the fetched XML contains the host `sip.voice.x.ai;transport=tls` and does **not** contain the literal token `{PHONEZERO_XAI_SIP_NUMBER}`. The bin ships **dual-channel recording**. It does **not** ship AMD: AMD on `<Sip>` would classify the xAI agent, not the restaurant. Restaurant AMD is on the REST/MCP initiate-call body (`MachineDetection`, `AsyncAmd` true). Do not add a public webhook server.
 11. Set a **Telnyx spend cap** on the outbound voice profile (enable daily spend limit; pick an amount you will notice). Caps reset 00:00 UTC. This is the server-side brake — the skill cannot enforce spend itself.
 12. Set an **xAI spend limit** in the console ([Billing → API spend management](https://docs.x.ai/console/billing)): keep invoiced billing at `$0` (prepaid only) or set a monthly top-up maximum you will notice. Voice Agent audio and STT are billed at the API rate.
 
@@ -57,7 +57,7 @@ These are the only configuration names PhoneZero uses. The eight plugin variable
     - auth works (account/balance call succeeds);
     - `PHONEZERO_FROM_NUMBER` is present on the account;
     - the TeXML application `PHONEZERO_TEXML_APP_ID` exists;
-    - `PHONEZERO_TEXML_BIN_URL` fetches publicly and the XML contains the SIP bridge `sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls` with no leftover `{PHONEZERO_XAI_SIP_NUMBER}` placeholder.
+    - `PHONEZERO_TEXML_BIN_URL` fetches publicly and the XML contains `<Dial>`, `<Sip>`, and the host `sip.voice.x.ai;transport=tls`, and does **not** contain the literal token `{PHONEZERO_XAI_SIP_NUMBER}`.
 17. **Optional developer path.** [`scripts/setup-check.sh`](../scripts/setup-check.sh) is developer-only. Run it on a **personal machine that is allowed to hold keys**, never on the Bot computer. It verifies Telnyx auth, that the number is on the account, that the TeXML application exists, and that the bin content is the substituted SIP bridge. It does **not** verify xAI SIP registration or that the agent answers.
 18. **Test call.**
     1. In Voice Agent Builder, update the **TASK BRIEF** with a test brief: your name, **your** phone as the "restaurant", and a note that this is a test.

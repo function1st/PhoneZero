@@ -57,7 +57,7 @@
       "PHONEZERO_XAI_SIP_NUMBER": {
         "type": "string",
         "title": "xAI Direct SIP number",
-        "description": "E.164 number registered with xAI for Direct SIP. The TeXML bin dials sip:{this}@sip.voice.x.ai;transport=tls. Fixture example: +15555550101."
+        "description": "E.164 number registered with xAI for Direct SIP — usually the same number as PHONEZERO_FROM_NUMBER (no second number required). The TeXML bin dials sip:{this}@sip.voice.x.ai;transport=tls. Fixture example: +15555550101."
       },
       "PHONEZERO_AGENT_NAME": {
         "type": "string",
