@@ -68,7 +68,6 @@ Account, KYC, and the DID stay manual. Everything after that is API-automatable.
 16. Copy the ids printed by the Bot or `provision.sh` into **Plugins → Configure**:
     - `TELNYX_ACCOUNT_SID`
     - `PHONEZERO_TEXML_APP_ID`
-    - `PHONEZERO_XAI_SIP_NUMBER` = `PHONEZERO_FROM_NUMBER` (if you did not set it in phase A).
 
 ## Verify
 

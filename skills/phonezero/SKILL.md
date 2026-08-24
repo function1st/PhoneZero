@@ -36,7 +36,7 @@ Do not invent `{TELNYX_ACCOUNT_SID}`.
 
 Human/developer mirrors: `docs/SETUP.md` and `scripts/provision.sh`. Telnyx account + KYC + buying the DID stay manual. Telnyx API steps go through the Telnyx MCP (`list_api_endpoints` → `get_api_endpoint_schema` → `invoke_api_endpoint`). xAI API steps use `XAI_API_KEY` from the environment (secure-secret flow — never ask for it in chat).
 
-**Keys first (or the MCP cannot run).** `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` are filled in *after* this recipe; they are not required to install the plugin. Confirm these are already saved: `TELNYX_API_KEY` (plugin variable — MCP works once it is saved), `PHONEZERO_FROM_NUMBER`, `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI`, and `XAI_API_KEY` (env). If `TELNYX_API_KEY` is missing, send the user to Plugins → Configure. If `XAI_API_KEY` is missing, start the secure secret request. Then, field-for-field:
+**Keys first (or the MCP cannot run).** `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` are filled in *after* this recipe; they are not required to install the plugin. Confirm these are already saved: `TELNYX_API_KEY` (plugin variable — MCP works once it is saved), `PHONEZERO_FROM_NUMBER`, `PHONEZERO_XAI_SIP_NUMBER` (= FROM), `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI`, and `XAI_API_KEY` (env). If `TELNYX_API_KEY` is missing, send the user to Plugins → Configure. If `XAI_API_KEY` is missing, start the secure secret request. Then, field-for-field:
 
 1. `GET /v2/whoami` → `data.organization_id` = `TELNYX_ACCOUNT_SID`.
 2. Find-or-create outbound voice profile name `PhoneZero US-only`: `traffic_type=conversational`, `service_plan=global`, `usage_payment_method=rate-deck`, `whitelisted_destinations=["US"]`, `daily_spend_limit="5.00"`, `daily_spend_limit_enabled=true` (`POST /v2/outbound_voice_profiles`; any other combo → Telnyx error 10015).
@@ -45,7 +45,7 @@ Human/developer mirrors: `docs/SETUP.md` and `scripts/provision.sh`. Telnyx acco
 5. Register the DID with xAI (idempotent: `GET https://api.x.ai/v2/phone-numbers` first): `POST https://api.x.ai/v2/phone-numbers` `{"name":"PhoneZero","phoneNumber":"{PHONEZERO_FROM_NUMBER}","origin":"byo_trunk"}`.
 6. Voice Agent Builder **agent creation is console-only** (`/v1/agents` is not enabled). Walk the user through creating one agent from `prompts/voice-agent.md`, then read the `agentId` back from the Builder console (or from `GET /v2/phone-numbers` after attach).
 7. Attach the agent: `PATCH https://api.x.ai/v2/phone-numbers/{phoneNumberId}` `{"phoneNumber":{"agentId":"agent_…"},"fieldMask":{"paths":["agent_id"]}}` — never a flat `{agentId}` (rejected).
-8. Print the ids and have the user enter the remaining plugin variables: `TELNYX_ACCOUNT_SID`, `PHONEZERO_TEXML_APP_ID`, `PHONEZERO_XAI_SIP_NUMBER` (= `PHONEZERO_FROM_NUMBER`). Do not invent SIDs.
+8. Print the ids and have the user enter the remaining plugin variables: `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID`. Do not invent SIDs.
 
 Approve each credentialed step. Never echo keys.
 

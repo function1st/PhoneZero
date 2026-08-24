@@ -4,9 +4,11 @@
 
 Adoption contract:
 
-1. Sign up for a Telnyx account and an xAI developer account.
-2. Install the PhoneZero plugin and ask Grok Bot: *"Set up phone calling."* (The Bot performs the setup on its own computer and browser.)
-3. Ask Grok Bot: *"Book me a table for 2 at Joe's Pizza Friday around 7."*
+1. Sign up for a Telnyx account and an xAI developer account. Complete Telnyx KYC and buy one US DID.
+2. Install the PhoneZero plugin (Marketplace, or from the repo URL until the listing exists).
+3. **Keys first**: enter `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_XAI_SIP_NUMBER` (= FROM), `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI` in Plugins → Configure; `XAI_API_KEY` via secure secret request. Leave `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` empty.
+4. Ask Grok Bot: *"Set up phone calling."* (Or run `scripts/provision.sh`.) Copy the printed ids into the two remaining variables.
+5. Ask Grok Bot: *"Book me a table for 2 at Joe's Pizza Friday around 7."*
 
 Personal use, single user. Open-source (Apache-2.0), distributed through the Grok Bot / Cursor plugin marketplace.
 
@@ -138,7 +140,7 @@ Primary channel: **Grok Bot via the Cursor Marketplace** — Grok Bot uses Curso
 | **Grok Build plugin marketplace** | PR to [xai-org/plugin-marketplace](https://github.com/xai-org/plugin-marketplace) | Remote source pinned to a full 40-char commit SHA; reads `.cursor-plugin/` layouts, so the same repo works |
 | **Official MCP Registry** | n/a directly (PhoneZero ships no MCP server of its own — it configures Telnyx's) | — |
 
-Hygiene from commit one (history becomes public): no secret ever committed, secret scanning in CI, fixture numbers `+15555550100`-style, synthetic transcripts only, everything parameterized, README with the 3-step contract + architecture + costs + compliance section, `SECURITY.md`, `CONTRIBUTING.md`, Apache-2.0. Safety defaults: disclosure flag ON, calling-hours guard, attempt caps, recording deleted after outcome confirmation, US destinations only in v1, no bulk-calling examples ever.
+Hygiene from commit one (history becomes public): no secret ever committed, secret scanning in CI, fixture numbers `+15555550100`-style, synthetic transcripts only, everything parameterized, README with the 5-step adoption contract + architecture + costs + compliance section, `SECURITY.md`, `CONTRIBUTING.md`, Apache-2.0. Safety defaults: disclosure flag ON, calling-hours guard, attempt caps, recording deleted after outcome confirmation, US destinations only in v1, no bulk-calling examples ever.
 
 ## Compliance posture
 
