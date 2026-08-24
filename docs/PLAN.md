@@ -87,6 +87,22 @@ Steps are also documented for a human in `docs/SETUP.md` — the Bot doing it is
 | Grok voice agent audio | $0.05–0.08/min (xAI) |
 | A 6-minute booking | ≈ $0.40–0.55 |
 
+## Prior art & positioning (researched Aug 2026)
+
+| Comparable | What it is | Why PhoneHand is different |
+|---|---|---|
+| **[CALL-E](https://www.heycall-e.com/)** — closest competitor | Hosted agent-agnostic phone-call service: Streamable HTTP MCP (`plan_call` → `run_call` → `get_call_run` with confirm tokens), plugins for Codex, Claude Code, **Cursor**, OpenClaw, Hermes; $0.05/call flat (early pricing), open-source integrations, self-hostable | It's a **hosted middleman** — your call goals, audio, and transcripts transit their service on their telephony + voice keys. PhoneHand is BYO-accounts: everything stays between the user's own Telnyx and xAI accounts, no third party, no per-call platform fee |
+| **OpenClaw voice plugins** ([openclaw-voice-gpt-realtime](https://clawhub.ai/connorcallison/openclaw-voice-gpt-realtime), [openclaw-voice-call-realtime](https://github.com/TristanBrotherton/openclaw-voice-call-realtime), ElevenLabs Agent skill ~7K installs) | Self-hosted Twilio + OpenAI-Realtime plugins; book restaurants, navigate IVRs, detect voicemail, report structured outcomes + transcripts; the Brotherton plugin adds mid-call `ask_assistant` (voice AI consults the owner's assistant/calendar before agreeing to a time) | All require the user to **run a server and a public tunnel** on an always-on machine, and all are OpenAI/ElevenLabs-based. PhoneHand has zero user infrastructure (Telnyx-hosted TeXML + xAI-hosted agent) and is Grok-native |
+| **Grok Bot itself** | Users have asked Grok Bot to replace OpenClaw setups; [one widely-seen post](https://x.com/fabiolr/status/2087885471300899242) shows Grok Bot concluding it *cannot* make Twilio voice calls and recommending the user stay on OpenClaw | **The gap is confirmed and public**: no phone-calling skill exists for Grok Bot today. PhoneHand is that missing skill, in Grok Bot's own marketplace |
+| Google "Ask for Me" / OpenTable / Resy | Google's Search Labs feature calls businesses on your behalf; booking platforms make calls unnecessary where integrated | Closed consumer features. Also informs skill behavior: **the Bot should book online first when the restaurant is on OpenTable/Resy (it has a browser), and call only when no online path exists** |
+
+Patterns adopted from the research:
+
+- **Plan-first with explicit confirmation** (CALL-E's `plan_call`/`confirm_token` shape): the skill always presents the call plan (who, when, what ask) in chat and gets the user's yes before dialing. Never auto-dial from an ambiguous request.
+- **Listen-first pickup and graceful hangup** (Brotherton plugin): the agent waits for the callee to speak before talking, and speaks a closing line fully before disconnecting — Phase 2 quality checklist items.
+- **Fail-closed skill rules**: vague task → no call; every call has a goal, disclosure, hang-up rules, and structured output.
+- **Mid-call `ask_assistant`** (voice agent consults the delegating Bot about alternatives mid-call) is the standout feature PhoneHand's zero-server architecture cannot do — noted as the flagship capability of the worker upgrade path.
+
 ## Phases
 
 ### Phase 0 — Accounts & manual proof
@@ -105,7 +121,7 @@ Steps are also documented for a human in `docs/SETUP.md` — the Bot doing it is
 - Tune Builder guardrails; confirm transcripts/recordings land in the console.
 
 ### Phase 3 — The skill
-- `skills/phonehand/SKILL.md`, drafted from real delegation transcripts: what to collect from the user before calling (window, party size, booking name, callback number), when to call vs decline (business hours, do-not-call judgment), how to fire the curl, how to poll Telnyx for call completion, how to fetch the recording and transcribe it via xAI STT, retry policy (max 2 attempts, 20 min apart), and how to report back in chat.
+- `skills/phonehand/SKILL.md`, drafted from real delegation transcripts: what to collect from the user before calling (window, party size, booking name, callback number), **try online booking first** (OpenTable/Resy via the Bot's own browser; call only when no online path exists), **plan-first confirmation** (present the call plan in chat, dial only on the user's yes), when to call vs decline (business hours, do-not-call judgment), how to fire the curl, how to poll Telnyx for call completion, how to fetch the recording and transcribe it via xAI STT, retry policy (max 2 attempts, 20 min apart), and how to report back in chat.
 - Run the full loop from a Grok Bot conversation repeatedly; iterate the skill until it needs no hand-holding.
 
 ### Phase 4 — Setup automation + packaging
