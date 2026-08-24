@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install lint tools
+        run: sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y shellcheck libxml2-utils
+
+      - name: Shellcheck
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          scripts=(scripts/*.sh)
+          if ((${#scripts[@]})); then
+            shellcheck "${scripts[@]}"
+          else
+            echo "No scripts/*.sh present; skipping shellcheck"
+          fi
+
+      - name: TeXML well-formed
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          bins=(texml/*.xml)
+          if ((${#bins[@]})); then
+            xmllint --noout "${bins[@]}"
+          else
+            echo "No texml/*.xml present; skipping xmllint"
+          fi
+
+      # NANP E.164 (+1 + 10 digits) and separated US formats only.
+      # Dates (2026-08-24), semver (0.1.0), and money ($0.05) do not match.
+      # +1555555XXXX and reserved 555-01xx fixtures are allowed.
+      - name: Fixture-only phone numbers
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          grep -RInE --binary-files=without-match \
+            --exclude-dir=.git \
+            --exclude-dir=node_modules \
+            --exclude-dir=agent-tools \
+            --exclude-dir=recordings \
+            -e '\+1[0-9]{10}' \
+            -e '\(?[2-9][0-9]{2}\)?[-.[:space:]][0-9]{3}[-.[:space:]][0-9]{4}' \
+            . >"$tmp" || true
+          flagged="$(grep -vE '\+1555555[0-9]{4}|555[-.[:space:]]?01[0-9]{2}' "$tmp" || true)"
+          if [ -n "$flagged" ]; then
+            echo "Real-looking phone numbers are not allowed. Use +1555555… fixtures only."
+            printf '%s\n' "$flagged"
+            exit 1
+          fi

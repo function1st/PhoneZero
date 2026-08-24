@@ -1,0 +1,84 @@
+{
+  "name": "phonezero",
+  "displayName": "PhoneZero",
+  "version": "0.1.0",
+  "description": "Give your Grok Bot a phone for reservations and phone errands — zero infrastructure.",
+  "author": {
+    "name": "Function1st"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "phone",
+    "voice",
+    "telnyx",
+    "grok",
+    "grok-bot",
+    "reservations",
+    "calling",
+    "mcp"
+  ],
+  "skills": "skills/phonezero",
+  "mcpServers": {
+    "telnyx": {
+      "url": "https://api.telnyx.com/v2/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TELNYX_API_KEY}"
+      }
+    }
+  },
+  "variables": {
+    "type": "object",
+    "properties": {
+      "TELNYX_API_KEY": {
+        "type": "string",
+        "title": "Telnyx API key",
+        "description": "Secret. Bearer token for the Telnyx hosted MCP. Cursor's backend attaches it as the Authorization header; the Bot computer never stores it."
+      },
+      "TELNYX_ACCOUNT_SID": {
+        "type": "string",
+        "title": "Telnyx account SID",
+        "description": "Telnyx account SID used by TeXML REST paths (Accounts/:account_sid)."
+      },
+      "PHONEZERO_FROM_NUMBER": {
+        "type": "string",
+        "title": "From number",
+        "description": "Your Telnyx US DID in E.164, used as the caller ID on outbound calls. Fixture example: +15555550100."
+      },
+      "PHONEZERO_TEXML_APP_ID": {
+        "type": "string",
+        "title": "TeXML application ID",
+        "description": "Telnyx TeXML application SID the Bot passes when placing a call."
+      },
+      "PHONEZERO_TEXML_BIN_URL": {
+        "type": "string",
+        "title": "TeXML bin URL",
+        "description": "Public URL of the TeXML bin that bridges the answered call to xAI over SIP."
+      },
+      "PHONEZERO_XAI_SIP_NUMBER": {
+        "type": "string",
+        "title": "xAI Direct SIP number",
+        "description": "E.164 number registered with xAI for Direct SIP. The TeXML bin dials sip:{this}@sip.voice.x.ai;transport=tls. Fixture example: +15555550101."
+      },
+      "PHONEZERO_AGENT_NAME": {
+        "type": "string",
+        "title": "Voice agent name",
+        "description": "Spoken name in the voice-agent opener (Hello, this is {agent_name}…)."
+      },
+      "PHONEZERO_DISCLOSE_AI": {
+        "type": "boolean",
+        "title": "Disclose automated assistant",
+        "description": "When true, the opener includes the automated-assistant clause. Default on (EU AI Act disclosure norms). The agent always answers truthfully if asked whether it is an AI.",
+        "default": true
+      }
+    },
+    "required": [
+      "TELNYX_API_KEY",
+      "TELNYX_ACCOUNT_SID",
+      "PHONEZERO_FROM_NUMBER",
+      "PHONEZERO_TEXML_APP_ID",
+      "PHONEZERO_TEXML_BIN_URL",
+      "PHONEZERO_XAI_SIP_NUMBER",
+      "PHONEZERO_AGENT_NAME"
+    ]
+  }
+}

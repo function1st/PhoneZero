@@ -28,8 +28,8 @@ TeXML Bin bridges the call to sip:{number}@sip.voice.x.ai
                   xAI Voice Agent (Builder-configured)
                   negotiates within the window · closing spoken recap
                                   ▼
-Grok Bot polls for call completion, fetches the transcript
-(Telnyx recording transcription via the same MCP)
+Grok Bot polls for call completion, fetches the recording (Telnyx MCP),
+transcribes it (xAI POST /v1/stt, multichannel)
 ──▶ confirms outcome to me in chat · books my calendar if asked
 ```
 
@@ -38,7 +38,7 @@ Grok Bot polls for call completion, fetches the transcript
 | Voice agent (prompt, guardrails, turn-taking, tools) | **xAI Voice Agent Builder** — answers calls arriving on the SIP-connected number | The conversation with the restaurant |
 | Call origination | **Telnyx hosted MCP** (`https://api.telnyx.com/v2/mcp`, streamable HTTP + bearer) called by the Bot | One tool call places the outbound call |
 | Restaurant ↔ agent bridge | **Telnyx-hosted TeXML Bin** — static XML: `<Dial><Sip>sip:{number}@sip.voice.x.ai;transport=tls</Sip></Dial>` | Telnyx and xAI exchange audio directly over SIP; no middleman |
-| Outcome | **Dual-channel call recording + Telnyx recording transcription**, fetched by the Bot through the same MCP | The agent's closing recap makes the transcript trivially machine-readable; the Bot (an LLM) extracts the outcome |
+| Outcome | **Dual-channel call recording fetched via Telnyx + xAI STT transcription** (`POST /v1/stt`, multichannel). Verified: Telnyx does not transcribe Dial-verb recordings — TeXML transcription exists only for `<Record transcription="true">` and the webhook-dependent `<Transcription>` verb | The agent's closing recap makes the transcript trivially machine-readable; the Bot (an LLM) extracts the outcome |
 | Orchestration | **Grok Bot** guided by `skills/phonezero/SKILL.md` | Plans, confirms, dials, polls, reads, retries, reports in chat |
 | Human audit trail | Builder console (recordings, transcripts, tool traces per call) | Review only — never on the Bot's critical path |
 
@@ -51,10 +51,10 @@ Grok Bot's computer is account-wide (all Bots share files, sessions, and command
 | Secret | Where it lives | How it's used |
 |---|---|---|
 | Telnyx API key | **Cursor plugin variable** — entered once in the plugin config UI. Grok Bot docs: hosted-MCP tokens "stay with Cursor's backend, which runs those tool calls on the computer's behalf. The computer never stores those tokens." | Attached by the backend as the `Authorization` header on Telnyx MCP calls |
-| xAI API key | **Never leaves xAI** — used only inside Voice Agent Builder's own console config | n/a |
-| Nothing else | The Bot's VM holds zero PhoneZero credentials | Every Bot action is an MCP tool call or a public-API read |
+| xAI API key (Builder) | **Never leaves xAI** — the Voice Agent Builder config is console-side | n/a |
+| xAI API key (STT) | Entered via Grok Bot's **secure secret request** flow — masked, excluded from transcript and model context, never pasted in chat | The one transcription call per task (`POST /v1/stt` on the fetched recording). Required because Telnyx cannot transcribe Dial-verb recordings |
 
-Optional variant (higher-quality transcription): use xAI STT (`POST /v1/stt`, multichannel) on the fetched recording instead of Telnyx transcription. This requires the xAI key on the computer — enter it via Grok Bot's **secure secret request** flow (masked, excluded from transcript and model context), never pasted in chat. Documented, not default.
+Net: the Telnyx key never touches the Bot's computer; the xAI key does, via the sanctioned masked flow, for STT only.
 
 Blast-radius controls (guardrails cannot live client-side since plugins are account-wide): Telnyx spend cap and xAI spend limit set during setup; a dedicated Telnyx account for PhoneZero is the recommended isolation; keys revocable at the vendor.
 
@@ -69,7 +69,8 @@ Canonical opener:
 - Negotiate only within the user's window; **verbatim read-back before accepting**; never invent a confirmation.
 - Every call ends with the spoken structured recap: "Confirming: booked / not booked, {time}, party of {n}, under {name}."
 - If the callee objects to recording or AI: end politely, report `needs_user`.
-- Voicemail (Telnyx AMD): leave a short message with the callback number, don't book; the skill retries once after 20 minutes (max 2 attempts).
+- Voicemail (Telnyx AMD, **async mode** — synchronous AMD requires a status-callback server we don't have; the result is read post-hoc from `answered_by` on the call-fetch endpoint): leave a short message with the callback number, don't book; the skill retries once after 20 minutes (max 2 attempts).
+- Per-call briefing: the Builder agent's prompt has a static behavior section and a task-brief section the Bot updates in the Builder console before each dial (the one browser-driven step in orchestration; Phase 1 verifies whether a faster injection path exists).
 
 ### Counter-offer negotiation ("7 is full, how about 8:15?")
 

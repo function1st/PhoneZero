@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PhoneZero TeXML Bin content.
+
+  TeXML Bins are STATIC documents hosted by Telnyx. Telnyx fetches this XML
+  as-is when the outbound restaurant call is answered. There is no per-call
+  templating at runtime.
+
+  Placeholders are substituted ONCE at setup time (the Bot or a human pastes
+  the filled document into the TeXML Bin editor). After that the bin never
+  changes between calls.
+
+  Setup-time placeholder:
+    {PHONEZERO_XAI_SIP_NUMBER}
+      The xAI Voice Agent SIP-connected number (user/digits only, no sip:
+      prefix). Example fixture after substitution: +15555550199
+
+  Verified against:
+    https://developers.telnyx.com/docs/voice/programmable-voice/texml-verbs/dial
+    https://developers.telnyx.com/docs/voice/programmable-voice/texml-setup
+    https://developers.telnyx.com/docs/voice/programmable-voice/texml-bin-quickstart
+    https://developers.telnyx.com/docs/voice/programmable-voice/texml-answering-machine
+    https://developers.telnyx.com/docs/voice/texml/rest-api/transcripts
+-->
+<Response>
+  <!--
+    <Dial> bridges the already-answered restaurant leg to the xAI voice agent.
+
+    record="record-from-answer-dual"
+      Official Dial @record values (default do-not-record):
+        do-not-record | record-from-answer | record-from-ringing |
+        record-from-answer-dual | record-from-ringing-dual
+      record-from-answer-dual starts a dual-channel recording when the SIP
+      destination answers. Verified:
+      https://developers.telnyx.com/docs/voice/programmable-voice/texml-verbs/dial
+
+    recordingChannels="dual"
+      Official values: single | dual (default single). Stereo: one party per
+      channel. Set explicitly so dual is not lost if record is later changed
+      to record-from-answer. Same Dial page as above.
+
+    timeout="30"
+      Seconds to wait for the SIP destination (xAI) to answer. Range 5–120,
+      default 30. Same Dial page.
+
+    timeLimit="600"
+      Max bridged-call duration in seconds. Range 60–14400, default 14400.
+      600s (10 min) is a sensible restaurant-booking cap. Same Dial page.
+
+    answerOnBridge is omitted: this Dial runs after Telnyx has already
+    answered the REST-originated restaurant call (TeXML is fetched on
+    answer). answerOnBridge only preserves ringing on an unanswered inbound
+    leg. Same Dial page.
+
+    recordingStatusCallback is omitted: PhoneZero is zero-server; the Bot
+    polls recordings via TeXML REST instead of receiving webhooks.
+
+    AMD is NOT set on this <Sip>. Dial <Number>/<Sip> do support
+    machineDetection (Enable | DetectMessageEnd | Disable) — that classifies
+    the DESTINATION of this Dial, which is the xAI agent, not the restaurant.
+    Restaurant AMD belongs on the REST initiate-call request
+    (MachineDetection). See scripts/place-call.sh and:
+    https://developers.telnyx.com/docs/voice/programmable-voice/texml-verbs/dial
+    https://developers.telnyx.com/docs/voice/programmable-voice/texml-answering-machine
+
+    Transcription: the Dial verb has no transcription attributes. Telnyx
+    documents TeXML transcription only for <Record transcription="true">
+    and the <Transcription> verb — not for Dial-verb recordings. See
+    scripts/get-outcome.sh and:
+    https://developers.telnyx.com/docs/voice/texml/rest-api/transcripts
+    https://developers.telnyx.com/docs/voice/programmable-voice/texml-verbs/record
+  -->
+  <Dial
+    record="record-from-answer-dual"
+    recordingChannels="dual"
+    timeout="30"
+    timeLimit="600">
+    <!--
+      <Sip> noun: SIP URI to dial. Official examples use sip:user@host:
+      https://developers.telnyx.com/docs/voice/programmable-voice/texml-verbs/dial
+      TeXML Bin quickstart also shows user@host without the sip: scheme:
+      https://developers.telnyx.com/docs/voice/programmable-voice/texml-bin-quickstart
+      We use the sip: form from the Dial verb page.
+
+      ;transport=tls is a SIP URI parameter (RFC 3261), not a TeXML
+      attribute. The Dial <Sip> attribute list does not document a
+      transport= flag. xAI's SIP endpoint is specified as TLS by PhoneZero.
+
+      {PHONEZERO_XAI_SIP_NUMBER} is replaced once at setup. The published
+      bin must contain a real number, not this token.
+    -->
+    <Sip>sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls</Sip>
+  </Dial>
+</Response>
