@@ -23,10 +23,11 @@
 #
 # Required env (never echoed):
 #   TELNYX_API_KEY
-#   TELNYX_ACCOUNT_SID
 #   PHONEZERO_FROM_NUMBER
 #   PHONEZERO_TEXML_BIN_URL
 #   PHONEZERO_TEXML_APP_ID
+# Optional / auto-resolved:
+#   TELNYX_ACCOUNT_SID — if unset, GET /v2/whoami → data.organization_id
 set -euo pipefail
 
 usage() {
@@ -40,10 +41,12 @@ To and PHONEZERO_FROM_NUMBER must match +1 and 10 digits (v1 is US-only).
 
 Required environment:
   TELNYX_API_KEY
-  TELNYX_ACCOUNT_SID
   PHONEZERO_FROM_NUMBER              E.164 caller ID on the Telnyx account
   PHONEZERO_TEXML_BIN_URL            public TeXML Bin URL (static XML)
   PHONEZERO_TEXML_APP_ID             TeXML Application id (ApplicationSid)
+
+Optional / auto-resolved:
+  TELNYX_ACCOUNT_SID                 if unset, GET /v2/whoami → data.organization_id
 
 Example (fixture number only):
   place-call.sh +15555550100
@@ -66,6 +69,49 @@ require_env() {
     echo "error: $name is not set" >&2
     exit 2
   fi
+}
+
+# organization_id from GET /v2/whoami is the TeXML Accounts/{account_sid} value.
+resolve_account_sid() {
+  if [ -n "${TELNYX_ACCOUNT_SID:-}" ]; then
+    return 0
+  fi
+  local tmp code org
+  tmp="$(mktemp)"
+  code="$(
+    curl -sS \
+      -o "$tmp" \
+      -w '%{http_code}' \
+      -H "Authorization: Bearer ${TELNYX_API_KEY}" \
+      -H "Accept: application/json" \
+      "https://api.telnyx.com/v2/whoami"
+  )" || true
+  if [ "$code" != "200" ]; then
+    echo "error: GET /v2/whoami HTTP ${code} (cannot resolve TELNYX_ACCOUNT_SID)" >&2
+    rm -f "$tmp"
+    exit 2
+  fi
+  org="$(
+    python3 -c '
+import json,sys
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+org=(d.get("data") or {}).get("organization_id") or ""
+if not isinstance(org, str) or not org.strip():
+    sys.exit(1)
+print(org.strip())
+' <"$tmp"
+  )" || {
+    echo "error: GET /v2/whoami response missing data.organization_id" >&2
+    rm -f "$tmp"
+    exit 2
+  }
+  rm -f "$tmp"
+  TELNYX_ACCOUNT_SID="$org"
+  export TELNYX_ACCOUNT_SID
+  echo "resolved TELNYX_ACCOUNT_SID via /v2/whoami (${TELNYX_ACCOUNT_SID:0:8}…)"
 }
 
 # Build the CamelCase JSON body. python3 avoids interpolation bugs in URLs.
@@ -183,7 +229,6 @@ if ! is_us_e164 "$TO"; then
 fi
 
 require_env TELNYX_API_KEY
-require_env TELNYX_ACCOUNT_SID
 require_env PHONEZERO_FROM_NUMBER
 require_env PHONEZERO_TEXML_BIN_URL
 require_env PHONEZERO_TEXML_APP_ID
@@ -204,6 +249,7 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 export PHONEZERO_TO="$TO"
+resolve_account_sid
 PAYLOAD="$(build_payload)"
 # account_sid path param (URL-encoded):
 # https://developers.telnyx.com/api-reference/texml-rest-commands/initiate-an-outbound-call

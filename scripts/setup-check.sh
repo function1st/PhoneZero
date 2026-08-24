@@ -7,6 +7,7 @@
 #
 # This script verifies exactly:
 #   - TELNYX_API_KEY authenticates (GET /v2/balance)
+#   - account SID resolvable via whoami (TELNYX_ACCOUNT_SID or GET /v2/whoami)
 #   - PHONEZERO_FROM_NUMBER exists on the account
 #   - the TeXML application exists and is active
 #   - the TeXML bin URL GETs and contains <Dial>, <Sip>, sip.voice.x.ai,
@@ -28,10 +29,11 @@
 #
 # Required env (never echoed):
 #   TELNYX_API_KEY
-#   TELNYX_ACCOUNT_SID
 #   PHONEZERO_FROM_NUMBER
 #   PHONEZERO_TEXML_APP_ID
 #   PHONEZERO_TEXML_BIN_URL
+# Optional / auto-resolved:
+#   TELNYX_ACCOUNT_SID — if unset, GET /v2/whoami → data.organization_id
 set -euo pipefail
 
 usage() {
@@ -41,18 +43,20 @@ Usage: setup-check.sh
 Verify PhoneZero Telnyx configuration. Prints a checklist. Exits non-zero
 if any check fails. Never prints TELNYX_API_KEY.
 
-Verifies: auth works; FROM number on account; TeXML app exists/active;
-bin URL GETs and contains <Dial>, <Sip>, sip.voice.x.ai, and no leftover
-{PHONEZERO_XAI_SIP_NUMBER} token.
+Verifies: auth works; account SID resolvable via whoami; FROM number on
+account; TeXML app exists/active; bin URL GETs and contains <Dial>, <Sip>,
+sip.voice.x.ai, and no leftover {PHONEZERO_XAI_SIP_NUMBER} token.
 
 Does NOT verify xAI SIP registration or that the agent answers.
 
 Required environment:
   TELNYX_API_KEY
-  TELNYX_ACCOUNT_SID
   PHONEZERO_FROM_NUMBER              E.164 DID on the account (e.g. +15555550100)
   PHONEZERO_TEXML_APP_ID             TeXML Application id
   PHONEZERO_TEXML_BIN_URL            public TeXML Bin URL
+
+Optional / auto-resolved:
+  TELNYX_ACCOUNT_SID                 if unset, GET /v2/whoami → data.organization_id
 EOF
 }
 
@@ -87,6 +91,51 @@ pass() {
   echo "PASS  $1"
 }
 
+# organization_id from GET /v2/whoami is the TeXML Accounts/{account_sid} value.
+resolve_account_sid() {
+  if [ -n "${TELNYX_ACCOUNT_SID:-}" ]; then
+    pass "TELNYX_ACCOUNT_SID is set"
+    return 0
+  fi
+  local tmp code org
+  tmp="$(mktemp)"
+  code="$(
+    curl -sS \
+      -o "$tmp" \
+      -w '%{http_code}' \
+      -H "Authorization: Bearer ${TELNYX_API_KEY}" \
+      -H "Accept: application/json" \
+      "https://api.telnyx.com/v2/whoami"
+  )" || true
+  if [ "$code" != "200" ]; then
+    echo "error: GET /v2/whoami HTTP ${code} (cannot resolve TELNYX_ACCOUNT_SID)" >&2
+    rm -f "$tmp"
+    exit 2
+  fi
+  org="$(
+    python3 -c '
+import json,sys
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+org=(d.get("data") or {}).get("organization_id") or ""
+if not isinstance(org, str) or not org.strip():
+    sys.exit(1)
+print(org.strip())
+' <"$tmp"
+  )" || {
+    echo "error: GET /v2/whoami response missing data.organization_id" >&2
+    rm -f "$tmp"
+    exit 2
+  }
+  rm -f "$tmp"
+  TELNYX_ACCOUNT_SID="$org"
+  export TELNYX_ACCOUNT_SID
+  echo "resolved TELNYX_ACCOUNT_SID via /v2/whoami (${TELNYX_ACCOUNT_SID:0:8}…)"
+  pass "account SID resolvable via whoami"
+}
+
 if [ $# -gt 0 ]; then
   case "$1" in
     -h|--help) usage; exit 0 ;;
@@ -105,16 +154,13 @@ fi
 
 echo "PhoneZero setup check"
 echo "====================="
-echo "Verifies: auth works; FROM number on account; TeXML app exists/active;"
-echo "bin URL GETs and contains <Dial>, <Sip>, sip.voice.x.ai, and no leftover"
-echo "{PHONEZERO_XAI_SIP_NUMBER} token."
+echo "Verifies: auth works; account SID resolvable via whoami; FROM number on"
+echo "account; TeXML app exists/active; bin URL GETs and contains <Dial>, <Sip>,"
+echo "sip.voice.x.ai, and no leftover {PHONEZERO_XAI_SIP_NUMBER} token."
 echo "Does NOT verify xAI SIP registration or that the agent answers."
 echo
 
 if ! require_env TELNYX_API_KEY; then
-  FAILS=$((FAILS + 1))
-fi
-if ! require_env TELNYX_ACCOUNT_SID; then
   FAILS=$((FAILS + 1))
 fi
 if ! require_env PHONEZERO_FROM_NUMBER; then
@@ -132,6 +178,8 @@ if [ "$FAILS" -gt 0 ]; then
   echo "Result: ${FAILS} failure(s) — missing required environment."
   exit 1
 fi
+
+resolve_account_sid
 
 # Do not print the key. Only confirm it is non-empty (already) and works.
 # US-only in v1 — must match the dialer's guard in place-call.sh (is_us_e164).
@@ -301,9 +349,9 @@ else
 fi
 
 echo
-echo "Scope: auth works; FROM number on account; TeXML app exists/active;"
-echo "bin URL GETs and contains <Dial>, <Sip>, sip.voice.x.ai, and no leftover"
-echo "{PHONEZERO_XAI_SIP_NUMBER} token."
+echo "Scope: auth works; account SID resolvable via whoami; FROM number on"
+echo "account; TeXML app exists/active; bin URL GETs and contains <Dial>, <Sip>,"
+echo "sip.voice.x.ai, and no leftover {PHONEZERO_XAI_SIP_NUMBER} token."
 echo "Not verified: xAI SIP registration; agent answers."
 if [ "$FAILS" -gt 0 ]; then
   echo "Result: ${FAILS} failure(s)"

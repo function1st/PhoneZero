@@ -38,7 +38,7 @@ These are the only configuration names PhoneZero uses. The eight plugin variable
 | Name | Kind | Purpose |
 |---|---|---|
 | `TELNYX_API_KEY` | plugin variable (secret) | Bearer token for the Telnyx hosted MCP. Cursor backend only. |
-| `TELNYX_ACCOUNT_SID` | plugin variable | TeXML REST account SID. |
+| `TELNYX_ACCOUNT_SID` | plugin variable | TeXML REST account SID. Developer scripts may leave it unset (auto-resolved via `GET /v2/whoami` → `data.organization_id`). Must be entered as a plugin variable for Grok Bot. Find it: `curl -sS -H "Authorization: Bearer $TELNYX_API_KEY" https://api.telnyx.com/v2/whoami`. |
 | `PHONEZERO_FROM_NUMBER` | plugin variable | Telnyx US DID (E.164), outbound caller ID. |
 | `PHONEZERO_TEXML_APP_ID` | plugin variable | TeXML application SID. |
 | `PHONEZERO_TEXML_BIN_URL` | plugin variable | Public URL of the TeXML bin. |
