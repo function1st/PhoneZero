@@ -17,8 +17,8 @@ Two hosted platforms already provide every piece the old service designs (Azure 
 | Voice agent session (prompt, tools, turn-taking) | Our media bridge / control WebSocket | **xAI Voice Agent Builder** — a console-configured agent answers calls on the SIP-connected number; no `realtime.call.incoming` webhook, no session code |
 | Originate the restaurant call | Our orchestrator + carrier adapter | **One Telnyx REST call** from Grok Bot's own computer (`POST /v2/texml/Accounts/{sid}/Calls`) |
 | Bridge restaurant ↔ voice agent | Our media relay | **Telnyx-hosted TeXML Bin** (static XML: `<Dial><Sip>sip:{number}@sip.voice.x.ai;transport=tls</Sip></Dial>`) — Telnyx bridges the answered call into xAI's SIP endpoint |
-| Structured outcome | `report_outcome` tool → SQLite → SMS | **The call transcript itself**: the agent ends each call with a spoken structured recap; Grok Bot — an LLM — reads the transcript and confirms in chat. No delivery channel, no connectors, no format parsing |
-| Task state, history, transcripts | SQLite / D1 | **Builder observability** (xAI console / API) — the system of record for every call |
+| Structured outcome | `report_outcome` tool → SQLite → SMS | **The call transcript itself**: the agent ends each call with a spoken structured recap; the Bot transcribes the Telnyx recording via xAI STT and confirms in chat. No delivery channel, no connectors, no console scraping |
+| Task state, history, transcripts | SQLite / D1 | Telnyx recordings (REST-retrievable) + xAI STT transcripts kept by the Bot; Builder console recordings/transcripts as the human audit trail |
 | MCP endpoint for the Bot | Hosted MCP server | **Not needed** — the "tool" is the Bot running one `curl` from its computer, taught by `SKILL.md` |
 
 ### Per-task flow
@@ -36,8 +36,8 @@ Telnyx dials restaurant ──(answered)──▶ TeXML Bin bridges to sip:{num}
                               talks to host · negotiates within window
                               ends with a spoken structured recap
                                               ▼
-Grok Bot polls Telnyx for call completion, reads the transcript
-(xAI console via its browser, or Telnyx recording + xAI STT)
+Grok Bot polls Telnyx for call completion, fetches the dual-channel
+recording (Telnyx REST), transcribes it (xAI POST /v1/stt, multichannel)
 ──▶ confirms outcome to me in chat · books my calendar itself if asked
 ```
 
@@ -49,7 +49,7 @@ The restaurant-side audio never touches user infrastructure; Telnyx and xAI talk
 |---|---|---|
 | Telephony | **Telnyx** (TeXML REST + hosted TeXML Bins + direct SIP to xAI) | The only carrier work is one outbound-call REST request and a static hosted bin — no webhooks, no media streaming, no user server. Twilio equivalents (TwiML Bins) exist, so a Twilio variant is a docs PR. |
 | Voice agent | **xAI Voice Agent Builder** (beta) on a SIP-connected Telnyx number | Owns the call session, prompt, guardrails, tools, recordings, and transcripts. Free provisioned number not used — the Telnyx number connects via direct SIP so *we* can originate calls on it. |
-| Outcome channel | **The transcript, read by the Bot; confirmation delivered in chat.** The agent prompt requires a closing spoken recap ("Confirming: booked, Friday 7:15, party of 2, under {name}"). Two retrieval channels, both within the two accounts: (a) the Bot's browser reads the call's transcript/tool log in the xAI console (Builder stores them per call; **confirmed: no public API for Builder call history exists today** — docs.x.ai has no such endpoint and the management API covers only keys/collections/audit); (b) API-only fallback: Telnyx records leg A (dual-channel, ~$0.002/min), the Bot fetches the recording via Telnyx REST and transcribes it with xAI STT (`POST /v1/stt`, $0.10/hr, multichannel separates host and agent). If xAI later ships a call-log API, swap channel (a) to it. | No third product, no connectors, no format parsing — the reader is an LLM and the Bot reports the result **directly in the conversation**, then does any follow-through itself with its own tools (e.g. putting the reservation on my calendar). |
+| Outcome channel | **API-only: Telnyx call recording + xAI STT, read by the Bot; confirmation delivered in chat.** The agent prompt requires a closing spoken recap ("Confirming: booked, Friday 7:15, party of 2, under {name}"). Telnyx records the call (dual-channel, ~$0.002/min); the Bot fetches the recording over Telnyx REST and transcribes it with xAI STT (`POST /v1/stt`, $0.10/hr, `multichannel` separates host and agent — ~$0.01 per 6-min call). **Confirmed (Aug 2026): xAI has no API, documented or credibly undocumented, for retrieving Builder call transcripts/audio** — the full docs corpus has no such endpoint, and the deepest community project on this stack ([dial-a-repo](https://github.com/zeke/dial-a-repo)) resorted to scraping its own worker logs for past transcripts. Builder's console artifacts are a human audit trail only; the Bot never touches the console. Swap to a native call-log API if xAI ever ships one. | No third product, no connectors, no console scraping — every step is a REST call within the two accounts, and the Bot reports the result **directly in the conversation**, then does any follow-through itself with its own tools (e.g. putting the reservation on my calendar). |
 | Orchestrator | **Grok Bot itself**, guided by `skills/SKILL.md` | The Bot has a persistent computer, terminal, and browser. It fires the call, polls Telnyx for completion, reads the transcript, retries per policy, and reports back. Retries/scheduling use Bot routines — no queue infra. |
 | Guardrails | Telnyx spend caps + xAI spend limits + skill-encoded policy (max attempts, calling hours, confirmation read-back in the agent prompt) | Nothing server-side exists to enforce caps, so the money-level backstops live in the two vendor dashboards. Acceptable for personal use; documented honestly. |
 | License & naming | **Apache-2.0**, neutral name | Cursor Marketplace requires open source; avoid xAI/Telnyx trademarks in the name. |
@@ -97,7 +97,7 @@ Steps are also documented for a human in `docs/SETUP.md` — the Bot doing it is
 - `prompts/voice-agent.md` v1: self-identify as an AI assistant, state the ask early, negotiate only within the window, verbatim read-back before accepting, then **close every call with the spoken structured recap** ("Confirming: booked / not booked, {time}, party of {n}, under {name}"). Voicemail policy (leave callback, don't book).
 - `texml/bridge.xml` with answering-machine detection on the dial; `scripts/place-call.sh`; `scripts/setup-check.sh`.
 - The recap grammar spec shared by the agent prompt and the skill (what the Bot looks for in the transcript's closing lines).
-- ~~Verify whether call transcripts are exposed via xAI API~~ **Resolved (Aug 2026): they are not** — no Builder call-history endpoint exists in docs.x.ai or the management API. The skill's transcript step uses the Bot's browser on the console, with the Telnyx-recording + xAI-STT path as the API-only alternative; exercise both in this phase and standardize on the sturdier one.
+- ~~Verify whether call transcripts are exposed via xAI API~~ **Resolved (Aug 2026): they are not**, documented or credibly undocumented — no Builder call-history endpoint exists in docs.x.ai or the management API, and community projects deep in this stack (dial-a-repo) had to scrape their own logs for past transcripts. The transcript step is therefore Telnyx recording → xAI STT, all REST. Configure recording on the TeXML dial (dual-channel) and validate the STT multichannel output labels host vs agent correctly.
 
 ### Phase 2 — Call quality
 - Persona eval checklist run against the Builder agent (busy host, IVR, voicemail, "we're full", counter-offer): scripted scenarios I answer myself, asserting the closing recap in the transcript is correct each time.
@@ -105,7 +105,7 @@ Steps are also documented for a human in `docs/SETUP.md` — the Bot doing it is
 - Tune Builder guardrails; confirm transcripts/recordings land in the console.
 
 ### Phase 3 — The skill
-- `skills/phonehand/SKILL.md`, drafted from real delegation transcripts: what to collect from the user before calling (window, party size, booking name, callback number), when to call vs decline (business hours, do-not-call judgment), how to fire the curl, how to poll Telnyx for call completion, how to fetch and read the transcript, retry policy (max 2 attempts, 20 min apart), and how to report back.
+- `skills/phonehand/SKILL.md`, drafted from real delegation transcripts: what to collect from the user before calling (window, party size, booking name, callback number), when to call vs decline (business hours, do-not-call judgment), how to fire the curl, how to poll Telnyx for call completion, how to fetch the recording and transcribe it via xAI STT, retry policy (max 2 attempts, 20 min apart), and how to report back in chat.
 - Run the full loop from a Grok Bot conversation repeatedly; iterate the skill until it needs no hand-holding.
 
 ### Phase 4 — Setup automation + packaging
@@ -131,7 +131,8 @@ If someone needs hard-structured outcomes (a tool call, not a transcript read), 
 | Risk | Mitigation |
 |---|---|
 | Voice Agent Builder is beta; features/pricing shift | Setup is thin (one agent, one prompt, one connector) — cheap to reconfigure; upgrade path documented if Builder regresses |
-| Transcript missing or delayed after call end | Skill waits for Telnyx call-completion first, then polls the transcript with a timeout; treats absence as `unknown` (never `booked`) before retrying |
+| Recording missing or delayed after call end | Skill waits for Telnyx call-completion, then polls the recording endpoint with a timeout; treats absence as `unknown` (never `booked`) before retrying |
+| Recording consent (two-party states) | The agent's opening disclosure covers it, and recording is the user's own call artifact; README documents jurisdictional responsibility. Users who disable recording lose the outcome channel and must use the worker upgrade path |
 | Agent invents a confirmation | Prompt requires verbatim read-back before accepting; the Bot only reports `booked` when the transcript shows the host confirming the recap; full audio in console as final arbiter |
 | Mid-call IVR ("press 2 for reservations") | `send_digits_on_answer` covers known extensions; otherwise documented limitation — the upgrade path restores full DTMF |
 | Bot-side setup drifts (Telnyx/Builder UIs change) | `setup-check.sh` verifies the invariants (bin content, SIP registration, agent answers); docs/SETUP.md kept UI-agnostic |
