@@ -6,7 +6,7 @@ PhoneZero gives [Grok Bot](https://x.ai/news/introducing-grok-bot) a phone: ask 
 
 ## Adoption
 
-0. **Or point a Grok Bot at this repository URL** and ask it to set up phone calling — [`AGENTS.md`](AGENTS.md) routes it to the skill.
+0. **Or point a Grok Bot at this repository URL** and ask it to set up phone calling — [`AGENTS.md`](AGENTS.md) routes it to the skill. Pointing a Bot at this repo is how it finds the skill. You still install the plugin from this repo URL so the Telnyx MCP and plugin variables exist. Do not export TELNYX_API_KEY onto the computer. [`docs/SETUP.md`](docs/SETUP.md) is the human walkthrough. `scripts/provision.sh` is developer-only on a personal machine that may hold keys — never here.
 1. Sign up for a Telnyx account and an xAI developer account. Complete Telnyx KYC and buy one US DID.
 2. Install the PhoneZero plugin from the Cursor Marketplace, **or** clone this repo and install from the repo URL until the Marketplace listing exists.
 3. **Keys first.** In Plugins → Configure enter `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI`, and `PHONEZERO_XAI_SIP_NUMBER` (same as FROM). Enter `XAI_API_KEY` via Grok Bot's secure secret request. The Telnyx MCP works once `TELNYX_API_KEY` is saved. Leave `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` empty for now.
@@ -25,9 +25,9 @@ Grok Bot (its own cloud computer)
   │ 2. presents the call plan in chat; on my yes:
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
-Telnyx To = sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai  (agent answers)
+Telnyx To = sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls  (agent answers)
   ▼
-Inline Texml: Pause → <Say>{task_brief}> → <Dial>{restaurant}
+Inline Texml: <Pause/><Say>{task_brief}</Say><Dial>{restaurant}</Dial>
   ▼
 Agent absorbs the spoken brief, hears ringback, then talks to the host
                   negotiates within the window · closing spoken recap

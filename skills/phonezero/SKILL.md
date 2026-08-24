@@ -9,7 +9,7 @@ Grok Bot skill. You collect a reservation task, try online booking first, confir
 
 v1 is US destinations only. Never place a call outside the United States. Never place bulk or multi-destination calls. Never auto-dial.
 
-**Bootstrap from repo.** If you reached this skill by being pointed at the repository rather than an installed plugin: read `README.md` and `docs/SETUP.md`, then run the Setup section below. Plugin variables can be entered when the plugin is installed, or held as environment/config for this session. `AGENTS.md` is the repo-root hook.
+**Bootstrap from repo.** If you reached this skill by being pointed at the repository rather than an installed plugin: read `README.md` and `docs/SETUP.md`, then run the Setup section below. Plugin variables are entered when the plugin is installed. `AGENTS.md` is the repo-root hook.
 
 ## 1. Preconditions
 
@@ -45,7 +45,7 @@ Human/developer mirrors: `docs/SETUP.md` and `scripts/provision.sh`. Telnyx acco
 3. Find-or-create TeXML app name `PhoneZero`: `voice_url` = the public raw URL of `texml/inbound.xml` (default `https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml`; verify it returns HTTP 200 before writing it — until that file is on `main`, use the user's fork/branch raw URL), `voice_method=get`, `outbound.outbound_voice_profile_id` = that profile.
 4. `PATCH /v2/phone_numbers/{phone_number_id}` `{"connection_id":"<texml_app_id>"}`.
 5. Register the DID with xAI (idempotent: `GET https://api.x.ai/v2/phone-numbers` first): `POST https://api.x.ai/v2/phone-numbers` `{"name":"PhoneZero","phoneNumber":"{PHONEZERO_FROM_NUMBER}","origin":"byo_trunk"}`.
-6. Voice Agent Builder **agent creation has no public API** (`/v1/agents` is not enabled). **You** perform it in this Bot's own browser with the user's approved console session at the xAI Voice Agent Builder: create one agent → paste `prompts/voice-agent.md` fully substituted once (`{agent_name}` = `PHONEZERO_AGENT_NAME`; `{disclosure_clause}` = `, an automated assistant,` if `PHONEZERO_DISCLOSE_AI` is true, else empty) → save → copy the `agentId`. The prompt is fully static after that — never edit it per call. If browser access to the console is unavailable, walk the human through the same steps and read the `agentId` back.
+6. Voice Agent Builder **agent creation has no public API** (`/v1/agents` is not enabled). **You** perform it in this Bot's own browser with the user's approved console session at [https://console.x.ai](https://console.x.ai) (Voice Agent Builder section): create one agent → paste `prompts/voice-agent.md` fully substituted once (`{agent_name}` = `PHONEZERO_AGENT_NAME`; `{disclosure_clause}` = `, an automated assistant,` if `PHONEZERO_DISCLOSE_AI` is true, else empty) → save → copy the `agentId`. The prompt is fully static after that — never edit it per call. If browser access to the console is unavailable, walk the human through the same steps and read the `agentId` back.
 7. Attach the agent: `PATCH https://api.x.ai/v2/phone-numbers/{phoneNumberId}` `{"phoneNumber":{"agentId":"agent_…"},"fieldMask":{"paths":["agent_id"]}}` — never a flat `{agentId}` (rejected).
 8. Print the ids and have the user enter the remaining plugin variables: `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID`. Do not invent SIDs.
 
@@ -159,7 +159,7 @@ JSON `args`:
   "ApplicationSid": "{PHONEZERO_TEXML_APP_ID}",
   "To": "sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls",
   "From": "{PHONEZERO_FROM_NUMBER}",
-  "Texml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Pause length=\"1\"/><Say>{task_brief}</Say><Dial answerOnBridge=\"true\" timeLimit=\"600\">{restaurant_phone}</Dial></Response>",
+  "Texml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Pause length=\"1\"/><Say>{xml_escaped_task_brief}</Say><Dial answerOnBridge=\"true\" timeLimit=\"600\">{restaurant_phone}</Dial></Response>",
   "Record": true,
   "RecordingChannels": "dual",
   "Timeout": 30,
@@ -167,7 +167,7 @@ JSON `args`:
 }
 ```
 
-Build `Texml` by substituting XML-escaped `{PHONEZERO_TASK_BRIEF}` and `{RESTAURANT_E164}` into `texml/bridge.xml` (strip XML comments and newlines). `{PHONEZERO_XAI_SIP_NUMBER}` is the request `To`, not a field in this XML. Do not send `Url` — the request schema is oneOf: `Url` XOR `Texml` XOR neither.
+Build `{task_brief}` from the template. XML-escape it (`&` `<` `>`). Load `texml/bridge.xml`, strip comments and newlines, replace `{PHONEZERO_TASK_BRIEF}` with the escaped string and `{RESTAURANT_E164}` with `{restaurant_phone}`. That string is the `Texml` field. `{PHONEZERO_XAI_SIP_NUMBER}` is the request `To`, not a field in this XML. Do not send `Url` — the request schema is oneOf: `Url` XOR `Texml` XOR neither.
 
 **Schema lag:** `get_api_endpoint_schema` for `calls_accounts_texml_calls` does **not** list `Texml` (the MCP's OpenAPI snapshot lags the API). `invoke_api_endpoint` still passes `Texml` through and it works. Do not "correct" yourself off the schema — omit `Url` and send `Texml`.
 
@@ -217,7 +217,14 @@ curl -sSg -X POST https://api.x.ai/v1/stt \
   -F file=@/tmp/phonezero-{call_sid}.audio
 ```
 
-5. The recording includes the spoken briefing at the start. The multichannel response includes a `channels` array (one transcript per speaker). Identify the **agent** channel as the one whose `text` contains the canonical opener ("calling on a recorded line" / "I'd like to make a reservation") and/or the agent's restatement of the briefing. The channel that contains the briefing TTS (and not the opener) is the Telnyx/instruction side — not the host; do not treat briefing TTS as a host confirmation. Do not over-specify channel numbers. If `channels` is missing or the opener cannot identify the agent channel: outcome `unknown`, never `booked`.
+5. The recording includes the spoken briefing at the start. The multichannel response includes a `channels` array (one transcript per speaker). Apply this channel model (do not over-specify channel numbers):
+
+   - Identify the **agent** channel by the opener ONLY ("calling on a recorded line" / "I'd like to make a reservation"). NEVER identify it by a "restatement of the briefing" — that matches the Telnyx TTS.
+   - The other channel may contain BOTH the briefing TTS and later host audio. It is not "not the host."
+   - Briefing TTS = the turn that starts with the briefing preamble (`Task briefing for` / `This is an automated briefing, not a restaurant` — the fixed start of the §6 template). That turn is never a host confirmation.
+   - Host confirmation = a later turn on the non-agent channel, after the opener, that accepts the time, has the party down, or answers yes to the read-back.
+   - A mailbox greeting / beep / "leave a message" is never a host confirmation.
+   - If `channels` is missing or the opener is not unique (neither channel, or both channels, contain the opener): outcome `unknown`, never `booked`.
 
 If STT fails or returns empty text: outcome `unknown`. Never `booked`. You may retry the call later under §5 (absence is not a booking).
 
@@ -235,6 +242,8 @@ Read the **closing lines** of the agent channel for that sentence. Then independ
 2. A **host** turn (the non-agent channel, identified in §8) confirms the reservation — e.g. they accept the time, say they have the party down, or answer yes to the agent's verbatim read-back.
 3. The recap's `{time}` is inside the approved window or the pre-briefed alternates.
 4. Recording exists and xAI STT returned a transcript.
+5. The confirming turn is not briefing TTS and not a voicemail greeting/beep/"leave a message" — a live human turn is required.
+6. The recording contains a complete briefing (restaurant, party, date, window at minimum). Missing or garbled brief → never `booked`.
 
 The agent's recap alone is not enough. If the recap says `booked` but the host never confirmed, classify `unknown` and say so. Never invent a confirmation number or a time that is not in the transcript.
 
@@ -248,6 +257,7 @@ Map everything else:
 | Host offered a time **outside** window/alternates; recap `not booked` with that time | `needs_user` |
 | Host objected to recording or to an AI caller | `needs_user` |
 | Wrong number, not a restaurant, host asked a human to call back | `needs_user` |
+| Briefing missing or incomplete in the recording | `unknown` |
 | Missing recording/transcript, unparseable recap, recap/host disagree | `unknown` |
 | Call abandoned mid-hold, recap `not booked`, host never refused | `unknown` |
 | Call `status` `failed` or `canceled` | `failed` always. Never `booked`. Quote a transcript under `failed` only. |

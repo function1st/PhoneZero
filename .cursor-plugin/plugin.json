@@ -52,7 +52,7 @@
       "PHONEZERO_XAI_SIP_NUMBER": {
         "type": "string",
         "title": "xAI Direct SIP number",
-        "description": "E.164 number registered with xAI as byo_trunk — usually the same number as PHONEZERO_FROM_NUMBER (no second number required). Call-create To target: sip:{this}@sip.voice.x.ai;transport=tls (the agent answers first). Fixture example: +15555550101."
+        "description": "E.164 number registered with xAI as byo_trunk — usually the same number as PHONEZERO_FROM_NUMBER (no second number required). Call-create To target: sip:{this}@sip.voice.x.ai;transport=tls (the agent answers first). Fixture example: +15555550100."
       },
       "PHONEZERO_AGENT_NAME": {
         "type": "string",

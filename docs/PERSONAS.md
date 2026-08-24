@@ -8,19 +8,9 @@ Do not use real numbers. Fixtures only.
 
 The Builder prompt is static. Each call's facts are spoken by Telnyx TTS (`<Say>`) before the restaurant is dialed. Use this spoken brief (do not edit the Builder prompt):
 
-| Placeholder | Value |
-|---|---|
-| `{agent_name}` | `PhoneZero` |
-| `{disclosure_clause}` | `, an automated assistant,` (flag ON) |
-| `{restaurant_name}` | `Joe's Pizza` |
-| `{n}` | `2` |
-| `{date}` | `Friday, August 28` |
-| `{time}` | `7:00 PM` |
-| `{window}` | `6:30 PM to 8:00 PM` |
-| `{alternates}` | `6:45 PM, 7:15 PM, 7:30 PM` |
-| `{name}` | `Alex Example` |
-| `{callback_phone}` | `+15555550199` |
-| `{special_requests}` | `none` |
+```
+Task briefing for PhoneZero. This is an automated briefing, not a restaurant. Disclosure: include the automated-assistant clause in the opener. Restaurant: Joe's Pizza. Party of 2. Date: Friday, August 28. Preferred time: 7:00 PM. Window: 6:30 PM to 8:00 PM. Ranked alternates: 6:45 PM, 7:15 PM, 7:30 PM. Booking name: Alex Example. Callback: +15555550199. Special requests: none.
+```
 
 Callee fixture: `+15555550100`. Evaluator phone is this DID or a SIP stand-in labeled the same.
 
@@ -196,14 +186,19 @@ Must not contain `Confirming: booked`.
 
 **Outcome.** `unknown` or `failed` — never `booked`, even if the host offered a table.
 
-**Transcript must contain.** No `Confirming: booked`. If a recap is present it is:
-
-`Confirming: not booked, 7:00 PM, party of 2, under Alex Example.`
-
-(or the agent ends without a recap because it never controlled a reservation turn.)
+**Transcript must contain.** No `Confirming: booked`. Recap optional; if present it must say `not booked` and must not invent a time or name that was not briefed.
 
 ---
 
 ## Scoring
 
-A scenario passes only if the outcome state matches and the xAI STT transcript contains the recap line exactly (punctuation and field order as written) when a recap is required. Identify the agent channel by the opener text; the channel that contains the briefing TTS (and not the opener) is the Telnyx/instruction side — not the host. For `booked`, also highlight the host-channel confirmation turn in the eval notes. Builder console audio is the tie-breaker when channel labels are messy; the skill still must not report `booked` without a host confirmation in the xAI STT transcript.
+A scenario passes only if the outcome state matches and the xAI STT transcript contains the recap line exactly (punctuation and field order as written) when a recap is required. Apply this channel model:
+
+- Identify the **agent** channel by the opener ONLY ("calling on a recorded line" / "I'd like to make a reservation"). NEVER identify it by a "restatement of the briefing" — that matches the Telnyx TTS.
+- The other channel may contain BOTH the briefing TTS and later host audio. It is not "not the host."
+- Briefing TTS = the turn that starts with the briefing preamble (`Task briefing for` / `This is an automated briefing, not a restaurant`). That turn is never a host confirmation.
+- Host confirmation = a later turn on the non-agent channel, after the opener, that accepts the time, has the party down, or answers yes to the read-back.
+- A mailbox greeting / beep / "leave a message" is never a host confirmation.
+- If `channels` is missing or the opener is not unique: outcome `unknown`, never `booked`.
+
+For `booked`, also highlight the host-channel confirmation turn in the eval notes (gates 5–6: confirming turn is a live human, not briefing TTS or voicemail; recording contains a complete briefing). Builder console audio is the tie-breaker when channel labels are messy; the skill still must not report `booked` without a host confirmation in the xAI STT transcript.

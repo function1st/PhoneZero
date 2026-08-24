@@ -4,7 +4,7 @@
 # TELNYX_API_KEY into its environment.
 #
 # get-outcome.sh — poll a TeXML call to a terminal status, download a
-# completed Dial-verb recording, and transcribe it with xAI STT.
+# completed call-level dual-channel recording, and transcribe it with xAI STT.
 #
 # Call status (eventually consistent; MCP: retrieve_calls_accounts_texml_calls):
 #   GET /v2/texml/Accounts/{account_sid}/Calls/{call_sid}

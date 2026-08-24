@@ -27,8 +27,8 @@ Grok Bot (its own cloud computer)
   │ 2. presents the call plan in chat; on my yes:
   │ 3. places the call via the Telnyx hosted MCP tool
   ▼
-Telnyx To = sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai  (agent answers)
-Inline Texml: Pause → <Say>{task_brief}> → <Dial>{restaurant}
+Telnyx To = sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls  (agent answers)
+Inline Texml: <Pause/><Say>{task_brief}</Say><Dial>{restaurant}</Dial>
                                   ▼
                   xAI Voice Agent (static Builder prompt)
                   absorbs spoken brief · negotiates · closing recap
@@ -42,7 +42,7 @@ transcribes it (xAI POST /v1/stt, multichannel)
 |---|---|---|
 | Voice agent (prompt, guardrails, turn-taking, tools) | **xAI Voice Agent Builder** — answers calls arriving on the SIP-connected number | The conversation with the restaurant |
 | Call origination | **Telnyx hosted MCP** (`https://api.telnyx.com/v2/mcp`, streamable HTTP + bearer) called by the Bot | One tool call places the outbound call |
-| Restaurant ↔ agent bridge | **Inline TeXML** (`Texml` field; template `texml/bridge.xml`): `To` is the agent SIP URI; XML is `<Pause/><Say>{task_brief}/><Dial>{restaurant}`. Recording is call-level. No AMD (would classify the agent). No hosted bin. Spoken-brief mechanic **live-verified Aug 2026**. | Agent answers first, hears the brief, then Telnyx dials the restaurant |
+| Restaurant ↔ agent bridge | **Inline TeXML** (`Texml` field; template `texml/bridge.xml`): `To` is `sip:{PHONEZERO_XAI_SIP_NUMBER}@sip.voice.x.ai;transport=tls`; XML is `<Pause/><Say>{task_brief}</Say><Dial>{restaurant}</Dial>`. Recording is call-level. No AMD (would classify the agent). No hosted bin. Spoken-brief mechanic **live-verified Aug 2026**. | Agent answers first, hears the brief, then Telnyx dials the restaurant |
 | Outcome | **Dual-channel call recording fetched via Telnyx + xAI STT transcription** (`POST /v1/stt`, multichannel). Verified: Telnyx does not transcribe Dial-verb recordings — TeXML transcription exists only for `<Record transcription="true">` and the webhook-dependent `<Transcription>` verb | The agent's closing recap makes the transcript trivially machine-readable; the Bot (an LLM) extracts the outcome |
 | Orchestration | **Grok Bot** guided by `skills/phonezero/SKILL.md` | Plans, confirms, dials, polls, reads, retries, reports in chat |
 | Human audit trail | Builder console (recordings, transcripts, tool traces per call) | Review only — never on the Bot's critical path |
