@@ -70,16 +70,6 @@ Human-readable walkthrough of the same work the Bot automates: **[docs/SETUP.md]
 - **Deletion is not consent.** Deleting a recording after transcription does not exempt the capture from consent laws. Real-time transcription is interception in the same all-party-consent states as storing the audio.
 - **Not legal advice.** This section is a product default, not counsel. Get a lawyer before you rely on it.
 
-## Prior art
-
-Patterns adopted: plan-first confirmation before any dial; listen-first pickup and graceful hangup; fail-closed skill rules (vague task → no call).
-
-| Project | What it is | Difference |
-|---|---|---|
-| [CALL-E](https://www.heycall-e.com/) | Hosted agent-agnostic call service (MCP `plan_call` / `run_call` / `get_call_run`) | Hosted middleman. PhoneZero is BYO Telnyx + xAI; audio and transcripts stay on your accounts. |
-| OpenClaw voice plugins ([voice-gpt-realtime](https://clawhub.ai/connorcallison/openclaw-voice-gpt-realtime), [voice-call-realtime](https://github.com/TristanBrotherton/openclaw-voice-call-realtime)) | Self-hosted Twilio + OpenAI-Realtime; restaurant booking, IVR, voicemail, structured outcomes | Require a server and a public tunnel. PhoneZero has no user infrastructure. |
-| [dial-a-repo](https://github.com/zeke/dial-a-repo) | xAI Speech-to-Speech + Cloudflare Worker control plane | The upgrade path if you need live mid-call tools. Not the v1 default. |
-
 ## License
 
 [Apache License 2.0](LICENSE). Copyright 2026 Function1st.

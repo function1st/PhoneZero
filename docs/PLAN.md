@@ -47,7 +47,7 @@ transcribes it (xAI POST /v1/stt, multichannel)
 | Orchestration | **Grok Bot** guided by `skills/phonezero/SKILL.md` | Plans, confirms, dials, polls, reads, retries, reports in chat |
 | Human audit trail | Builder console (recordings, transcripts, tool traces per call) | Review only — never on the Bot's critical path |
 
-Confirmed constraint shaping this design: **xAI exposes no API (documented or credibly undocumented) for retrieving Builder call transcripts or audio** — the complete docs surface has no such endpoint, and the deepest community project on this stack ([dial-a-repo](https://github.com/zeke/dial-a-repo)) had to scrape its own logs for past transcripts. Hence the Telnyx-fetched recording transcribed with xAI STT. If xAI ships a call-log API, swapping it in is a one-step skill change.
+Confirmed constraint shaping this design: **xAI exposes no API (documented or credibly undocumented) for retrieving Builder call transcripts or audio** — the complete docs surface has no such endpoint. Hence the Telnyx-fetched recording transcribed with xAI STT. If xAI ships a call-log API, swapping it in is a one-step skill change.
 
 ### Secrets model — no keys on the Bot's computer
 
@@ -99,16 +99,13 @@ No database. Per call: Telnyx dual-channel recording (REST-retrievable; the skil
 | Grok voice agent audio (xAI) | $0.05–0.08/min |
 | A 6-minute booking | ≈ $0.40–0.55 |
 
-## Prior art & positioning (researched Aug 2026)
+## Design principles
 
-| Comparable | What it is | PhoneZero's difference |
-|---|---|---|
-| **[CALL-E](https://www.heycall-e.com/)** | Hosted agent-agnostic call service: MCP (`plan_call`/`run_call`/`get_call_run` with confirm tokens), plugins for Codex, Claude Code, Cursor, OpenClaw; $0.05/call early pricing | Hosted middleman — call goals, audio, and transcripts transit their service on their keys. PhoneZero is BYO-accounts: everything stays between the user's Telnyx and xAI accounts |
-| **OpenClaw voice plugins** ([voice-gpt-realtime](https://clawhub.ai/connorcallison/openclaw-voice-gpt-realtime), [voice-call-realtime](https://github.com/TristanBrotherton/openclaw-voice-call-realtime), ElevenLabs Agent ~7K installs) | Self-hosted Twilio + OpenAI-Realtime plugins; restaurant booking, IVR DTMF, voicemail detection, structured outcomes; Brotherton adds mid-call `ask_assistant` | All require the user to run a server + public tunnel on an always-on machine, all OpenAI/ElevenLabs-based. PhoneZero: zero user infrastructure, Grok-native |
-| **Grok Bot itself** | [A widely-seen post](https://x.com/fabiolr/status/2087885471300899242) shows Grok Bot concluding it cannot make voice calls and recommending the user stay on OpenClaw | PhoneZero ships in Grok Bot's own marketplace |
-| Google "Ask for Me", OpenTable/Resy | Closed consumer call feature; booking platforms | Informs skill behavior: book online first when possible; call only the long tail |
-
-Patterns adopted: plan-first confirmation before any dial (CALL-E's confirm-token shape), listen-first pickup and graceful hangup (Brotherton), fail-closed skill rules (vague task → no call; every call has a goal, disclosure, hang-up rules, structured output).
+- **BYO accounts, no middleman.** Call goals, audio, and transcripts stay between the user's own Telnyx and xAI accounts. Nothing transits a third-party service.
+- **Zero user infrastructure.** No server, no tunnel, no always-on machine.
+- **Plan-first confirmation** before any dial; listen-first pickup; graceful hangup.
+- **Fail-closed rules**: vague task → no call; every call has a goal, disclosure, hang-up rules, and a structured outcome.
+- **Book online first** when possible; call only the long tail.
 
 ## Repo layout
 
@@ -198,4 +195,4 @@ Hygiene from commit one (history becomes public): no secret ever committed, secr
 
 ## Appendix — control-plane upgrade path
 
-For users who need live mid-call relay (`check_availability` answered from the calendar in real time), mid-call DTMF, hard-structured `report_outcome` tool calls, or no-capture operation in strict-consent countries (processing only our own agent's outputs, no callee audio): a Cloudflare Worker (free plan) receives xAI's `realtime.call.incoming` webhook and drives the session over the realtime WebSocket — the [dial-a-repo](https://github.com/zeke/dial-a-repo) pattern. Telnyx setup is unchanged; the xAI side switches from Builder to the Speech-to-Speech API. Cost: one `wrangler deploy` and a Cloudflare account. Documented in the repo, not built in v1.
+For users who need live mid-call relay (`check_availability` answered from the calendar in real time), mid-call DTMF, hard-structured `report_outcome` tool calls, or no-capture operation in strict-consent countries (processing only our own agent's outputs, no callee audio): a Cloudflare Worker (free plan) receives xAI's `realtime.call.incoming` webhook and drives the session over the realtime WebSocket. Telnyx setup is unchanged; the xAI side switches from Builder to the Speech-to-Speech API. Cost: one `wrangler deploy` and a Cloudflare account. Documented in the repo, not built in v1.
