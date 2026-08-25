@@ -1,0 +1,20 @@
+{
+  "name": "phonezero",
+  "description": "PhoneZero Grok marketplace. Point a Bot at https://github.com/function1st/PhoneZero and follow AGENTS.md Grok Bot setup.",
+  "owner": {
+    "name": "Function1st"
+  },
+  "plugins": [
+    {
+      "name": "phonezero-grok",
+      "description": "Grok Bot PhoneZero: Telnyx HTTP + xAI stdio. Cursor uses the .cursor-plugin package.",
+      "category": "development",
+      "source": {
+        "type": "local",
+        "path": "./plugins/phonezero-grok"
+      },
+      "homepage": "https://github.com/function1st/PhoneZero",
+      "keywords": ["phonezero", "telnyx", "phone"]
+    }
+  ]
+}

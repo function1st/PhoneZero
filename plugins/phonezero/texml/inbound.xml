@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PhoneZero inbound TeXML.
+
+  The TeXML application's voice_url is fetched only for INBOUND calls
+  to the DID. Outbound restaurant calls carry inline Texml on the
+  call-create request and never fetch this file.
+
+  Served from the public repo:
+  https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml
+-->
+<Response>
+  <Say>This number places outbound calls only and cannot take calls.</Say>
+  <Hangup/>
+</Response>

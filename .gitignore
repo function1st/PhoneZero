@@ -1,0 +1,6 @@
+.env
+*.local
+*.mp3
+agent-tools/
+recordings/
+node_modules/

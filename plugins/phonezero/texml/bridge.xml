@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PhoneZero inline TeXML template — not a hosted bin.
+
+  Call-create To (request field, not in this XML):
+    sip:{PHONEZERO_FROM_NUMBER}@sip.voice.x.ai;transport=tls
+  The Builder agent answers that To immediately.
+
+  At call time the caller substitutes:
+    {RESTAURANT_E164}       — restaurant PSTN E.164 inside <Dial>
+                            (must be on the Telnyx PhoneZero US-only
+                            voice-profile whitelisted_destinations;
+                            enforcement is Telnyx, not this XML)
+
+  Booking facts are NOT spoken here. Upload phonezero-booking.json to the
+  xAI collection (scripts/put-booking-file.sh) before this dial. The agent
+  reads that file. Do not add <Say>.
+
+  and passes the whole XML string as the Texml field on
+  POST /v2/texml/Accounts/{account_sid}/Calls
+  (request schema is oneOf: Url XOR Texml XOR neither — do not send Url
+  when Texml is set).
+
+  Flow: Pause 3s (welcome "PhoneZero is ready!" + collections_search
+  on the SIP leg) → <Dial> the restaurant with an E.164
+  callerId. The welcome is spoken on the agent's ear during this
+  pause; the restaurant must not be bridged yet or a fast pickup
+  hears it. After Dial, the agent hears ringback and stays mute
+  until the callee greets.
+  Do not set answerOnBridge: the SIP To is already answered so the
+  agent can retrieve the booking file; answerOnBridge only applies to
+  an unanswered inbound leg and has been seen to skip the PSTN Dial
+  after a SIP first hop.
+
+  Recording is call-level on the create request (Record=true,
+  RecordingChannels=dual). Do not put record on <Dial>.
+
+  Do not set MachineDetection / AsyncAmd on this call. They would classify
+  the To leg (the xAI agent), which is useless. Voicemail is conversational.
+-->
+<Response>
+  <Pause length="3"/>
+  <Dial callerId="{PHONEZERO_FROM_NUMBER}" timeout="60" timeLimit="600" ringTone="us">
+    <Number>{RESTAURANT_E164}</Number>
+  </Dial>
+</Response>
