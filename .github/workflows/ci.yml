@@ -80,5 +80,6 @@ jobs:
       - name: Privacy guards
         run: |
           set -euo pipefail
+          git fetch --no-tags origin "${GITHUB_BASE_REF:-main}:refs/remotes/origin/${GITHUB_BASE_REF:-main}" || true
           python3 scripts/privacy-check.py --self-test
           python3 scripts/privacy-check.py

@@ -146,20 +146,37 @@ def collect_commit_emails(repo: Path, extra_args: list[str] | None = None) -> li
     return found
 
 
-def _author_log_args(repo: Path) -> list[str] | None:
-    """On a PR, check only commits that are not already on the base branch."""
-    base = os.environ.get("GITHUB_BASE_REF", "").strip()
-    if not base:
-        return None
-    ref = f"origin/{base}"
+def _ref_exists(repo: Path, ref: str) -> bool:
     probe = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "--verify", ref],
         capture_output=True,
         text=True,
     )
-    if probe.returncode != 0:
-        return None
-    return ["HEAD", "--not", ref]
+    return probe.returncode == 0
+
+
+def _author_log_args(repo: Path) -> list[str] | None:
+    """Check only commits that are not already on the base branch."""
+    candidates: list[str] = []
+    base = os.environ.get("GITHUB_BASE_REF", "").strip()
+    if base:
+        candidates.extend([f"origin/{base}", base])
+    before = os.environ.get("GITHUB_EVENT_BEFORE", "").strip()
+    if before and set(before) != {"0"}:
+        candidates.append(before)
+    candidates.append("origin/main")
+    for ref in candidates:
+        if _ref_exists(repo, ref):
+            return ["HEAD", "--not", ref]
+    parents = subprocess.run(
+        ["git", "-C", str(repo), "rev-list", "--parents", "-n", "1", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    parts = (parents.stdout or "").split()
+    if parents.returncode == 0 and len(parts) >= 3:
+        return ["HEAD", "--not", parts[1]]
+    return None
 
 
 def scan_authors(repo: Path) -> list[str]:
