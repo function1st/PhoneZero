@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="plugins/phonezero/assets/logo.png" alt="PhoneZero" width="160" height="160">
+</p>
+
 # PhoneZero
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

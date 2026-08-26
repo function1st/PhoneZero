@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PhoneZero">
+  <defs>
+    <linearGradient id="pz-bg" x1="80" y1="16" x2="430" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#17344f"/>
+      <stop offset="1" stop-color="#071018"/>
+    </linearGradient>
+    <radialGradient id="pz-halo" cx="256" cy="250" r="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1b6aa0" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#071018" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="pz-z" x1="250" y1="150" x2="400" y2="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7adcff"/>
+      <stop offset="1" stop-color="#0094ff"/>
+    </linearGradient>
+    <linearGradient id="pz-band" x1="90" y1="90" x2="420" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4ad2ff"/>
+      <stop offset="1" stop-color="#0a8cff"/>
+    </linearGradient>
+    <filter id="pz-glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#pz-bg)"/>
+  <rect width="512" height="512" rx="108" fill="url(#pz-halo)"/>
+
+  <path d="M128 228 C128 118 384 118 384 228" fill="none" stroke="url(#pz-band)" stroke-width="26" stroke-linecap="round" filter="url(#pz-glow)"/>
+  <circle cx="138" cy="236" r="34" fill="#14b4ff"/>
+  <circle cx="374" cy="236" r="34" fill="#14b4ff"/>
+
+  <g fill="#f4f7fb" transform="translate(108 268) rotate(-42)">
+    <rect x="-17" y="-58" width="34" height="50" rx="15"/>
+    <rect x="-17" y="10" width="34" height="50" rx="15"/>
+    <rect x="-10" y="-12" width="20" height="26" rx="8"/>
+  </g>
+
+  <path d="M372 256 C386 300 348 344 300 358" fill="none" stroke="#f4f7fb" stroke-width="15" stroke-linecap="round"/>
+  <circle cx="296" cy="360" r="12" fill="#14b4ff"/>
+
+  <g transform="translate(256 268) skewX(-10) translate(-256 -268)">
+    <path fill="#f4f7fb" d="M156 168 h48 c48 0 78 29 78 66 0 35-28 64-76 64 h-12 v56 h-38 z m38 32 v66 h14 c26 0 40-15 40-33 0-19-14-33-40-33 z"/>
+    <path fill="url(#pz-z)" d="M274 168 h118 v32 L328 292 h72 v34 H266 v-32 l64-94 H274 z"/>
+  </g>
+
+  <g fill="#f4f7fb">
+    <circle cx="214" cy="386" r="7"/>
+    <circle cx="256" cy="386" r="7"/>
+    <circle cx="298" cy="386" r="7"/>
+    <circle cx="214" cy="414" r="7"/>
+    <circle cx="256" cy="414" r="7"/>
+    <circle cx="298" cy="414" r="7"/>
+    <circle cx="214" cy="442" r="7"/>
+    <circle cx="256" cy="442" r="7"/>
+    <circle cx="298" cy="442" r="7"/>
+  </g>
+</svg>

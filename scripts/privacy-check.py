@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = ROOT / "scripts" / "privacy-phone-allowlist.txt"
 
 SKIP_DIRS = {".git", "node_modules", "agent-tools", "recordings"}
-SKIP_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp3", ".woff", ".woff2"}
+SKIP_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".mp3", ".woff", ".woff2"}
 
 # ITU E.164: + then 8–15 digits, first digit 1–9.
 E164_RE = re.compile(r"\+[1-9]\d{7,14}")
