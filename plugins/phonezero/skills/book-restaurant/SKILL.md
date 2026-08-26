@@ -26,7 +26,7 @@ Do not dial until every required field is known. Fail closed after one clarifyin
 | Field | Rules |
 |---|---|
 | Restaurant name | As the host will recognize it. |
-| Restaurant phone | E.164. If you only have a name, look the number up, show it, and get confirmation. Reject numbers whose country is not in the Telnyx **PhoneZero US-only** `whitelisted_destinations`. `+1` covers Canada and Caribbean NANP too — confirm the actual country, ask if unsure, refuse on no. |
+| Restaurant phone | E.164. If you only have a name, look the number up, show it, and get confirmation. Reject numbers whose country is not in the Telnyx profile attached to the PhoneZero TeXML app (`whitelisted_destinations`). `+1` covers Canada and Caribbean NANP too — confirm the actual country, ask if unsure, refuse on no. |
 | Date | Concrete calendar date. |
 | Preferred time | The first ask. |
 | Window start–end | Inclusive acceptable range on that date. Concatenate into `{window}` (e.g. `6:30 PM to 8:00 PM`). |

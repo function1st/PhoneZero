@@ -16,7 +16,7 @@ Required fields (edit these):
 | Field | Rules |
 |---|---|
 | Callee name | As they will recognize it. |
-| Callee phone | E.164. Confirm. Country must be on the Telnyx **PhoneZero US-only** whitelist. |
+| Callee phone | E.164. Confirm. Country must be on the Telnyx profile attached to the PhoneZero TeXML app. |
 | Callback | E.164. Default to the user's phone; confirm it. |
 
 Add only what the voice agent needs. Fail closed after one clarifying turn if the task stays vague.

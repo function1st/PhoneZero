@@ -76,13 +76,13 @@ Fallback only if stdio will not start: Bearer on `https://api.x.ai/v1` and `/v2`
 Keep in session. Do not look these up after yes.
 
 1. `TELNYX_ACCOUNT_SID` — `invoke_api_endpoint` `list_billing_groups` args `{ "jq_filter": "[.data[].organization_id] | unique" }`
-2. `PHONEZERO_TEXML_APP_ID` — `invoke_api_endpoint` `list_texml_applications` args `{ "filter": { "friendly_name": "PhoneZero" }, "jq_filter": ".data[] | {id, friendly_name}" }`
+2. `PHONEZERO_TEXML_APP_ID` — `invoke_api_endpoint` `list_texml_applications` args `{ "filter": { "friendly_name": "PhoneZero" }, "jq_filter": ".data[] | {id, friendly_name, outbound}" }`
 3. From — `get_call_config` (last-4 in chat)
-4. Destinations — `invoke_api_endpoint` `list_outbound_voice_profiles` (name `PhoneZero US-only` → `whitelisted_destinations`). Show the list. This is **Telnyx** (Mission Control → Voice → Outbound voice profiles), not a PhoneZero field. PATCH only if they ask to add/remove countries.
+4. Destinations — the profile **attached to the PhoneZero TeXML app** (any name). `list_texml_applications` → `outbound.outbound_voice_profile_id`, then `invoke_api_endpoint` `list_outbound_voice_profiles` `{ "jq_filter": ".data[] | {id, name, whitelisted_destinations}" }` and pick that `id`. **No name filter.** Show the actual name + codes. This is **Telnyx** (Mission Control → Voice → Outbound voice profiles), not a PhoneZero field. PATCH only if they ask to add/remove countries.
 
 ### 7. Provision only if missing
 
-If profile **PhoneZero US-only**, app **PhoneZero**, and the DID is attached: skip create. Do not overwrite an existing whitelist unless they asked. Else skill Setup via MCP names: `list_outbound_voice_profiles` / `create_outbound_voice_profiles` (create default `["US"]`), `create_texml_applications` (`voice_url` = `https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml`, verify 200), `update_phone_numbers` `connection_id`. xAI: `register_byo_number` + `attach_agent` on **your** DID if needed.
+If app **PhoneZero** already has an outbound voice profile attached and the DID is on that app: skip create. Use that profile’s name and whitelist as-is. Do not overwrite an existing whitelist unless they asked. Else skill Setup via MCP names: `list_outbound_voice_profiles` (no name filter) / `create_outbound_voice_profiles` only if they have none (create-default name `PhoneZero` unless they pick another; whitelist default `["US"]` on create), `create_texml_applications` (`voice_url` = `https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml`, verify 200, attach the chosen profile), `update_phone_numbers` `connection_id`. xAI: `register_byo_number` + `attach_agent` on **your** DID if needed.
 
 ### 8. First call
 
@@ -146,7 +146,7 @@ Keys live in Configure / MCP headers only — not the agent shell.
 
 This sample ships with:
 
-- **Destinations:** Telnyx outbound voice profile **PhoneZero US-only**, `whitelisted_destinations` default `US` on create (Mission Control → Voice → Outbound voice profiles)
+- **Destinations:** whichever Telnyx outbound voice profile is attached to the PhoneZero TeXML app (`whitelisted_destinations`; default `US` only when PhoneZero **creates** a new profile). Name and country list are the user’s. Mission Control → Voice → Outbound voice profiles.
 - **AI disclosure:** default **on** in each task (`disclose_ai`) and in the one-time Builder paste
 - **Spoken name:** `PhoneZero`
 - **Recording:** dual-channel Telnyx recording on every call; the opener says the call is on a recorded line

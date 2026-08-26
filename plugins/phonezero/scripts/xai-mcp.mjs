@@ -808,7 +808,7 @@ async function handle(msg) {
     ok(id, {
       protocolVersion: params?.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "phonezero-xai", version: "0.4.1" },
+      serverInfo: { name: "phonezero-xai", version: "0.4.2" },
     });
     return;
   }

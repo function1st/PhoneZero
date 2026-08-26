@@ -34,7 +34,7 @@
 set -euo pipefail
 
 DEFAULT_INBOUND_XML_URL="https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml"
-PROFILE_NAME="PhoneZero US-only"
+DEFAULT_CREATE_PROFILE_NAME="PhoneZero"
 APP_NAME="PhoneZero"
 
 usage() {
@@ -59,6 +59,12 @@ Optional:
                                      list onto the Telnyx profile whitelist.
                                      If unset: create uses ["US"]; existing
                                      profile is not overwritten. Not a plugin var.
+  PHONEZERO_PROFILE_NAME             developer-only. Pin a Telnyx outbound
+                                     voice profile by name (find or create).
+                                     If unset: use the profile already
+                                     attached to the PhoneZero TeXML app,
+                                     or the only profile on the account.
+                                     Do not assume a hardcoded name.
   PHONEZERO_INBOUND_XML_URL          TeXML app voice_url (inbound reject page)
   XAI_API_KEY                        if set, register the DID with xAI (byo_trunk)
   PHONEZERO_XAI_AGENT_ID             if set (requires XAI_API_KEY), attach this
@@ -194,6 +200,47 @@ for item in (d.get("data") or []):
 '
 }
 
+# First data[].<field> whose id equals WANT_ID. Empty if none.
+json_data_field_by_id() {
+  FIELD="$1" WANT_ID="$2" python3 -c '
+import json,os,sys
+d=json.load(sys.stdin)
+field=os.environ["FIELD"]
+want=os.environ["WANT_ID"]
+for item in (d.get("data") or []):
+    if str(item.get("id") or "") == want:
+        print(str(item.get(field) or ""))
+        raise SystemExit(0)
+'
+}
+
+# outbound.outbound_voice_profile_id on the TeXML app named WANT. Empty if none.
+json_texml_outbound_profile_id() {
+  WANT="$1" python3 -c '
+import json,os,sys
+d=json.load(sys.stdin)
+want=os.environ["WANT"]
+for item in (d.get("data") or []):
+    if str(item.get("friendly_name") or "") != want:
+        continue
+    outbound=item.get("outbound") or {}
+    rid=str(outbound.get("outbound_voice_profile_id") or "")
+    if rid:
+        print(rid)
+    raise SystemExit(0)
+'
+}
+
+# data[].id when the list has exactly one row with an id. Empty otherwise.
+json_unique_data_id() {
+  python3 -c '
+import json,sys
+rows=[item for item in (json.load(sys.stdin).get("data") or []) if item.get("id")]
+if len(rows)==1:
+    print(rows[0]["id"])
+'
+}
+
 json_data_id() {
   python3 -c '
 import json,sys
@@ -297,7 +344,7 @@ fi
 if [ -z "${PHONEZERO_INBOUND_XML_URL:-}" ]; then
   PHONEZERO_INBOUND_XML_URL="$DEFAULT_INBOUND_XML_URL"
 fi
-export PROFILE_NAME APP_NAME
+export APP_NAME
 export PHONEZERO_INBOUND_XML_URL
 export PHONEZERO_FROM_NUMBER
 if [ -n "${PHONEZERO_XAI_AGENT_ID:-}" ]; then
@@ -316,14 +363,31 @@ echo
 
 resolve_account_sid
 
+# --- TeXML applications (needed to find the attached profile) ---------
+# GET /v2/texml_applications
+# https://developers.telnyx.com/api-reference/texml-applications
+APP_ID=""
+CODE="$(telnyx_list "https://api.telnyx.com/v2/texml_applications" "${WORKDIR}/apps.json")" || true
+if [ "$CODE" != "200" ]; then
+  echo "error: GET /v2/texml_applications HTTP ${CODE}" >&2
+  python3 -c 'import sys; print(sys.stdin.read()[:400])' <"${WORKDIR}/apps.json" >&2
+  exit 1
+fi
+APP_ID="$(json_find_data_id friendly_name "$APP_NAME" <"${WORKDIR}/apps.json" || true)"
+ATTACHED_PROFILE_ID=""
+if [ -n "$APP_ID" ]; then
+  ATTACHED_PROFILE_ID="$(json_texml_outbound_profile_id "$APP_NAME" <"${WORKDIR}/apps.json" || true)"
+fi
+
 # --- Outbound voice profile -------------------------------------------
 # GET /v2/outbound_voice_profiles
 # POST /v2/outbound_voice_profiles
 # PATCH /v2/outbound_voice_profiles/{id}  (whitelist drift after widen)
 # https://developers.telnyx.com/api-reference/outbound-voice-profiles
-# The Telnyx voice profile whitelisted_destinations is destination
-# enforcement. Do not overwrite an existing list unless the developer
-# explicitly set PHONEZERO_ALLOWED_COUNTRIES (not a plugin variable).
+# Use the profile attached to the PhoneZero TeXML app (any name). Do not
+# require a hardcoded name. Create only when the account has none.
+# Do not overwrite an existing list unless the developer explicitly set
+# PHONEZERO_ALLOWED_COUNTRIES (not a plugin variable).
 WANT_WHITELIST_PATCH=0
 if [ -n "${PHONEZERO_ALLOWED_COUNTRIES:-}" ]; then
   WANT_WHITELIST_PATCH=1
@@ -336,25 +400,51 @@ else
   echo "destination allowlist: create default ${WHITELIST_JSON}; existing Telnyx profile left as-is"
 fi
 
-PROFILE_ID=""
 CODE="$(telnyx_list "https://api.telnyx.com/v2/outbound_voice_profiles" "${WORKDIR}/profiles.json")" || true
 if [ "$CODE" != "200" ]; then
   echo "error: GET /v2/outbound_voice_profiles HTTP ${CODE}" >&2
   python3 -c 'import sys; print(sys.stdin.read()[:400])' <"${WORKDIR}/profiles.json" >&2
   exit 1
 fi
-PROFILE_ID="$(json_find_data_id name "$PROFILE_NAME" <"${WORKDIR}/profiles.json" || true)"
+
+PROFILE_ID=""
+PROFILE_NAME=""
+PROFILE_HOW=""
+if [ -n "${PHONEZERO_PROFILE_NAME:-}" ]; then
+  PROFILE_NAME="$PHONEZERO_PROFILE_NAME"
+  PROFILE_ID="$(json_find_data_id name "$PROFILE_NAME" <"${WORKDIR}/profiles.json" || true)"
+  if [ -n "$PROFILE_ID" ]; then
+    PROFILE_HOW="name pin"
+  fi
+elif [ -n "$ATTACHED_PROFILE_ID" ]; then
+  PROFILE_ID="$ATTACHED_PROFILE_ID"
+  PROFILE_NAME="$(json_data_field_by_id name "$PROFILE_ID" <"${WORKDIR}/profiles.json" || true)"
+  if [ -n "$PROFILE_NAME" ]; then
+    PROFILE_HOW="attached to TeXML app ${APP_NAME}"
+  else
+    echo "warning: TeXML app ${APP_NAME} points at outbound profile ${PROFILE_ID}, which is not in the account list — resolving another profile" >&2
+    PROFILE_ID=""
+  fi
+fi
+if [ -z "$PROFILE_ID" ] && [ -z "${PHONEZERO_PROFILE_NAME:-}" ]; then
+  PROFILE_ID="$(json_unique_data_id <"${WORKDIR}/profiles.json" || true)"
+  if [ -n "$PROFILE_ID" ]; then
+    PROFILE_NAME="$(json_data_field_by_id name "$PROFILE_ID" <"${WORKDIR}/profiles.json" || true)"
+    PROFILE_HOW="only profile on the account"
+  fi
+fi
+
 if [ -n "$PROFILE_ID" ]; then
-  echo "found outbound voice profile ${PROFILE_NAME} (${PROFILE_ID})"
+  echo "found outbound voice profile ${PROFILE_NAME:-?} (${PROFILE_ID}) [${PROFILE_HOW}]"
   DRIFT="$(
-    WANT_NAME="$PROFILE_NAME" WANT_JSON="$WHITELIST_JSON" python3 -c '
+    WANT_ID="$PROFILE_ID" WANT_JSON="$WHITELIST_JSON" python3 -c '
 import json, os, sys
 d = json.load(sys.stdin)
-want_name = os.environ["WANT_NAME"]
+want_id = os.environ["WANT_ID"]
 want = json.loads(os.environ["WANT_JSON"])
 want_set = set(want)
 for item in (d.get("data") or []):
-    if str(item.get("name") or "") != want_name:
+    if str(item.get("id") or "") != want_id:
         continue
     have = [str(x).upper() for x in (item.get("whitelisted_destinations") or [])]
     have_set = set(have)
@@ -373,12 +463,12 @@ print(",".join(sorted(want_set)))
   DRIFT_FLAG="$(printf '%s\n' "$DRIFT" | sed -n '1p')"
   if [ "$WANT_WHITELIST_PATCH" -eq 0 ]; then
     HAVE_WL="$(
-      WANT_NAME="$PROFILE_NAME" python3 -c '
+      WANT_ID="$PROFILE_ID" python3 -c '
 import json, os, sys
 d = json.load(sys.stdin)
-want_name = os.environ["WANT_NAME"]
+want_id = os.environ["WANT_ID"]
 for item in (d.get("data") or []):
-    if str(item.get("name") or "") != want_name:
+    if str(item.get("id") or "") != want_id:
         continue
     have = [str(x).upper() for x in (item.get("whitelisted_destinations") or [])]
     print(",".join(have) if have else "<empty>")
@@ -411,6 +501,24 @@ print(json.dumps({"whitelisted_destinations": json.loads(os.environ["WHITELIST_J
     echo "outbound voice profile whitelist matches ${WHITELIST_JSON}"
   fi
 else
+  PROFILE_COUNT="$(
+    python3 -c 'import json,sys; print(len([i for i in (json.load(sys.stdin).get("data") or []) if i.get("id")]))' <"${WORKDIR}/profiles.json"
+  )"
+  if [ "$PROFILE_COUNT" -gt 1 ] && [ -z "${PHONEZERO_PROFILE_NAME:-}" ]; then
+    echo "error: ${PROFILE_COUNT} outbound voice profiles on the account and none attached to TeXML app ${APP_NAME}." >&2
+    echo "Set PHONEZERO_PROFILE_NAME to pick one, or attach a profile to that TeXML app." >&2
+    python3 -c '
+import json,sys
+for item in (json.load(sys.stdin).get("data") or []):
+    name=item.get("name") or ""
+    rid=item.get("id") or ""
+    dest=item.get("whitelisted_destinations") or []
+    print(f"  {name} ({rid}) dest={dest}")
+' <"${WORKDIR}/profiles.json" >&2
+    exit 1
+  fi
+  PROFILE_NAME="${PHONEZERO_PROFILE_NAME:-$DEFAULT_CREATE_PROFILE_NAME}"
+  export PROFILE_NAME
   python3 -c '
 import json,os
 print(json.dumps({
@@ -424,7 +532,7 @@ print(json.dumps({
 }))
 ' >"${WORKDIR}/profile.body"
   if [ "$DRY_RUN" -eq 1 ]; then
-    echo "would POST /v2/outbound_voice_profiles"
+    echo "would POST /v2/outbound_voice_profiles (name ${PROFILE_NAME})"
     python3 -c 'import sys; print(sys.stdin.read())' <"${WORKDIR}/profile.body"
   else
     CODE="$(telnyx_http POST "https://api.telnyx.com/v2/outbound_voice_profiles" "${WORKDIR}/profile.json" "${WORKDIR}/profile.body")" || true
@@ -437,7 +545,7 @@ print(json.dumps({
     echo "created outbound voice profile ${PROFILE_NAME} (${PROFILE_ID})"
   fi
 fi
-export PROFILE_ID
+export PROFILE_ID PROFILE_NAME
 
 # --- inbound.xml voice_url must fetch (404 until the file is on main) --
 INBOUND_CODE="$(
@@ -458,19 +566,10 @@ if [ "$INBOUND_CODE" != "200" ]; then
 fi
 
 # --- TeXML application ------------------------------------------------
-# GET /v2/texml_applications
 # POST /v2/texml_applications
 # PATCH /v2/texml_applications/{id}
 # https://developers.telnyx.com/api-reference/texml-applications
-APP_ID=""
-CODE="$(telnyx_list "https://api.telnyx.com/v2/texml_applications" "${WORKDIR}/apps.json")" || true
-if [ "$CODE" != "200" ]; then
-  echo "error: GET /v2/texml_applications HTTP ${CODE}" >&2
-  python3 -c 'import sys; print(sys.stdin.read()[:400])' <"${WORKDIR}/apps.json" >&2
-  exit 1
-fi
-APP_ID="$(json_find_data_id friendly_name "$APP_NAME" <"${WORKDIR}/apps.json" || true)"
-
+# apps.json / APP_ID already loaded above (needed to find the attached profile).
 PROFILE_ID="${PROFILE_ID:-}"
 python3 -c '
 import json,os
@@ -763,4 +862,4 @@ echo
 echo "Spoken name and disclose are per-task (chat), not Plugins → Configure."
 echo "Enter TELNYX_API_KEY as a plugin variable (backend-held)."
 echo "Enter XAI_API_KEY via Grok Bot's secure secret request flow."
-echo "Destination countries are the Telnyx outbound voice profile PhoneZero US-only (Mission Control → Voice → Outbound voice profiles), not a plugin field."
+echo "Destination countries are the Telnyx outbound voice profile attached to the PhoneZero TeXML app (${PROFILE_NAME:-any name}; Mission Control → Voice → Outbound voice profiles), not a plugin field."

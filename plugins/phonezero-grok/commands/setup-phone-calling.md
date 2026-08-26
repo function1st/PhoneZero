@@ -12,7 +12,7 @@ After the vendor gate, **ask in chat and wait** before wiring. Do not silently k
 - Spoken name (default PhoneZero) — what the callee hears
 - AI disclaimer ON or OFF — they may turn it OFF
 
-**Do not ask for destination countries.** Read them from Telnyx after the HTTP MCP is proven: `list_outbound_voice_profiles` → profile **PhoneZero US-only** → `whitelisted_destinations`. Show the list. That setting is Telnyx Mission Control → Voice → Outbound voice profiles. PATCH only if they ask to add or remove countries. Do not give legal advice.
+**Do not ask for destination countries.** Read them from Telnyx after the HTTP MCP is proven: the outbound voice profile **attached to the PhoneZero TeXML app** (any name) → `whitelisted_destinations`. `list_outbound_voice_profiles` with **no name filter**; pick the id on that TeXML app. Show the actual name + codes. That setting is Telnyx Mission Control → Voice → Outbound voice profiles. PATCH only if they ask to add or remove countries. Do not give legal advice.
 
 Do not search Telnyx MCP for `whoami`. After Telnyx HTTP + xAI stdio are proven, resolve session ids immediately:
 

@@ -97,26 +97,26 @@ Use that `organization_id`. (Developer curl `GET /v2/whoami` is the same value. 
 2. **`PHONEZERO_TEXML_APP_ID`** — `invoke_api_endpoint` with `endpoint_name` `list_texml_applications` and args:
 
 ```json
-{ "filter": { "friendly_name": "PhoneZero" }, "jq_filter": ".data[] | {id, friendly_name}" }
+{ "filter": { "friendly_name": "PhoneZero" }, "jq_filter": ".data[] | {id, friendly_name, outbound}" }
 ```
 
 If a row named `PhoneZero` exists, use its `id`. If not, create it in **7**.
 
 3. **From** — `get_call_config`. If `from_wired` is false, Telnyx `list_phone_numbers` for the DID on the PhoneZero TeXML app.
 
-4. **Destinations** — read Telnyx, do not invent a PhoneZero field. `invoke_api_endpoint` `list_outbound_voice_profiles` args:
+4. **Destinations** — the outbound voice profile **attached to the PhoneZero TeXML app**, whatever it is named. Do **not** invent a PhoneZero field. Do **not** filter by `PhoneZero US-only`. Read `outbound.outbound_voice_profile_id` from the TeXML app (step 2). Then `invoke_api_endpoint` `list_outbound_voice_profiles` args:
 
 ```json
-{ "filter": { "name": { "contains": "PhoneZero" } }, "jq_filter": ".data[] | select(.name==\"PhoneZero US-only\") | {id, name, whitelisted_destinations}" }
+{ "jq_filter": ".data[] | {id, name, whitelisted_destinations}" }
 ```
 
-Show the codes in chat: “Telnyx outbound voice profile **PhoneZero US-only** currently allows: … . Change this in Telnyx Mission Control → Voice → Outbound voice profiles (or ask me to PATCH). It is not a PhoneZero plugin setting.” Only PATCH if they ask to add/remove countries. Do not give legal advice.
+Pick the row whose `id` matches that profile id. Show the codes in chat: “Telnyx outbound voice profile **{name}** currently allows: … . Change this in Telnyx Mission Control → Voice → Outbound voice profiles (or ask me to PATCH). It is not a PhoneZero plugin setting.” If the TeXML app has no profile yet: same list, no name filter — one profile → use it; several → ask which; none → create in **7**. Only PATCH if they ask to add/remove countries. Do not give legal advice.
 
 ### 7. Provision only if missing
 
-If profile **PhoneZero US-only**, TeXML app **PhoneZero**, and the DID is already attached: skip create. Do **not** overwrite an existing `whitelisted_destinations` unless they asked to change countries. Approve each credentialed write. Never echo keys.
+If a TeXML app **PhoneZero** already has an outbound voice profile attached and the DID is on that app: skip create. Use that profile’s name and whitelist as-is. Do **not** overwrite an existing `whitelisted_destinations` unless they asked to change countries. Approve each credentialed write. Never echo keys.
 
-If something is missing, skill **Setup** via MCP names (not REST path names): `list_outbound_voice_profiles` / `create_outbound_voice_profiles` (name `PhoneZero US-only`, `traffic_type=conversational`, `service_plan=global`, `usage_payment_method=rate-deck`, `whitelisted_destinations` default `["US"]` on create, `daily_spend_limit="5.00"`, `daily_spend_limit_enabled=true`); `create_texml_applications` / `update_texml_applications` (`voice_url` = `https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml`, verify HTTP 200, `voice_method=get`); `update_phone_numbers` `connection_id` = TeXML app id.
+If something is missing, skill **Setup** via MCP names (not REST path names): `list_outbound_voice_profiles` (no name filter) / `create_outbound_voice_profiles` only when they have **no** profile (create-default name `PhoneZero` unless they pick another, `traffic_type=conversational`, `service_plan=global`, `usage_payment_method=rate-deck`, `whitelisted_destinations` default `["US"]` on create, `daily_spend_limit="5.00"`, `daily_spend_limit_enabled=true`); `create_texml_applications` / `update_texml_applications` (`voice_url` = `https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml`, verify HTTP 200, `voice_method=get`, attach the chosen profile); `update_phone_numbers` `connection_id` = TeXML app id.
 
 xAI: `list_phone_numbers` → `register_byo_number` if the DID is not `byo_trunk` → `attach_agent` onto **your** DID. Skip Builder if they said already set up.
 
