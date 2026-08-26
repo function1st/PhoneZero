@@ -30,24 +30,25 @@ You were pointed at `https://github.com/function1st/PhoneZero`. Drive the UI. Do
 - Do **not** take keys in chat. Do **not** `source ~/.phonezero/env`. Do **not** run `scripts/provision.sh` here.
 - Do **not** search the Telnyx MCP catalog for `whoami` or `/v2/whoami`. Those are not tools. SID is `list_billing_groups` (step 6).
 - Do **not** treat “no Grok xAI *package*” as “cannot upload.” Add/use the PhoneZero xAI MCP (step 5).
-- Do **not** silently keep PhoneZero / AI-disclaimer ON. Ask (step 1) and wait.
+- Do **not** silently keep PhoneZero as the spoken name. Always ask the Agent Name (step 1, and before each later call unless they said always use one).
 - Do **not** collect destination countries as a PhoneZero setting. They live on the Telnyx outbound voice profile (step 6).
 
 ### 0. Vendor gate
 
 Need: Telnyx KYC + US DID + Telnyx key; xAI team **ZDR off** + that team’s key; Builder at [console.x.ai](https://console.x.ai) unless they already said xAI is set up. If missing, stop.
 
-### 1. Ask in chat — name and AI disclaimer (wait)
+### 1. Ask in chat — Agent Name and AI disclaimer (wait)
 
-Do **not** keep defaults silently. Show this and wait. **Do not ask for countries** — those are Telnyx (step 6).
+**Always ask** the spoken name. Do not apply PhoneZero without a reply. **Do not ask for countries** — those are Telnyx (step 6).
 
 ```
-Call settings (defaults — change any now)
-1. Spoken name: PhoneZero
-2. AI disclaimer: ON  (you may turn this OFF)
+Call settings — reply before we continue
+1. Spoken name (required): what the callee hears after “Hello, this is …”
+2. Always use that name on later calls? (yes = remember; no = ask every call)
+3. AI disclaimer: ON  (you may turn this OFF)
 ```
 
-Write answers into Edit Values / xAI env. If they turn disclaimer OFF and Builder already exists, re-paste the prompt once with `{disclosure_clause}` empty.
+Keep answers in session / each `phonezero-task`. Do **not** put the name on Edit Values. If they turn disclaimer OFF and Builder already exists, re-paste the prompt once with `{disclosure_clause}` empty. Before every later call, ask the name again unless they said to always use one.
 
 ### 2. Uninstall Cursor PhoneZero if it is installed
 
@@ -86,7 +87,7 @@ If app **PhoneZero** already has an outbound voice profile attached and the DID 
 
 ### 8. First call
 
-Plan-first. Show Spoken as. Only dial countries on the Telnyx profile whitelist. On yes: `put_task` (or `put_booking` alias; wait processed) → `calls_accounts_texml_calls` with the session ids → poll `retrieve_calls_accounts_texml_calls` → `retrieve_recordings_json_calls_accounts_texml_recordings_json` → `transcribe` → classify → `delete_booking` (live brief only). Keep the Telnyx recording. Do not paste the audio URL. Owner setup-test to their own confirmed number may skip the hours guard. Custom task: interview into a `phonezero-task` ([docs/SKILLS.md](docs/SKILLS.md)). If they say save as a template, pick memory or `put_template` and tell them where it went.
+Plan-first. Ask the Agent Name unless they said always use one. Show Spoken as. Only dial countries on the Telnyx profile whitelist. On yes: `put_task` (or `put_booking` alias; wait processed) → `calls_accounts_texml_calls` with the session ids → poll `retrieve_calls_accounts_texml_calls` → `retrieve_recordings_json_calls_accounts_texml_recordings_json` → `transcribe` → classify → `delete_booking` (live brief only). Keep the Telnyx recording. Do not paste the audio URL. Owner setup-test to their own confirmed number may skip the hours guard. Custom task: interview into a `phonezero-task` ([docs/SKILLS.md](docs/SKILLS.md)). If they say save as a template, pick memory or `put_template` and tell them where it went.
 
 ---
 
@@ -148,7 +149,7 @@ This sample ships with:
 
 - **Destinations:** whichever Telnyx outbound voice profile is attached to the PhoneZero TeXML app (`whitelisted_destinations`; default `US` only when PhoneZero **creates** a new profile). Name and country list are the user’s. Mission Control → Voice → Outbound voice profiles.
 - **AI disclosure:** default **on** in each task (`disclose_ai`) and in the one-time Builder paste
-- **Spoken name:** `PhoneZero`
+- **Spoken name:** Grok always asks (unless they said always use one). Cursor default `PhoneZero`.
 - **Recording:** dual-channel Telnyx recording on every call; the opener says the call is on a recorded line
 - **Hours / attempts:** runtime + skill defaults (see [`plugins/phonezero/skills/phonezero-runtime/SKILL.md`](plugins/phonezero/skills/phonezero-runtime/SKILL.md))
 

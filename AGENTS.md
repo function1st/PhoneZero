@@ -29,21 +29,27 @@ Need: Telnyx KYC + US DID + Telnyx key; xAI team **ZDR off** + that team’s key
 
 ### 1. Call identity — ask in chat, wait
 
-Do **not** silently keep defaults. “Set this up” is not consent to these. Show this card and wait for a reply. **Do not ask for destination countries** — those live on Telnyx (step 6).
+Do **not** silently keep PhoneZero. “Set this up” is not a spoken name. **Always ask** what Agent Name the callee should hear, and wait. PhoneZero is an example they may choose, not a default you apply without a reply. **Do not ask for destination countries** — those live on Telnyx (step 6).
 
 ```
-Call settings (defaults — change any now)
+Call settings — reply before we continue
 
-1. Spoken name the callee hears: PhoneZero
- “Hello, this is {name}…” — keep PhoneZero, or set your name / an alias.
+1. Spoken name (required): what should the callee hear after “Hello, this is …”?
+   Your name, an alias, or PhoneZero — you pick. Do not skip.
 
-2. AI disclaimer in the opener: ON
+2. Always use that name on later calls in this Bot?
+   Yes → remember it (session + memory if available) and do not re-ask.
+   No  → ask again before every call.
+
+3. AI disclaimer in the opener: ON
    ON  → “…{name}, an automated assistant, calling on a recorded line…”
    OFF → omit “, an automated assistant,”
    You may turn this OFF.
 ```
 
-Keep their answers in session and put them on each `phonezero-task` (`spoken_name`, `disclose_ai`). Do **not** put name or disclose on the Configure / Edit Values card. If they turn disclaimer OFF and the Builder agent already exists, re-paste `prompts/voice-agent.md` once with `{disclosure_clause}` empty — that paste is the only way to change a baked prompt. Per-call they may still pick a different spoken name.
+Keep their answers in session and put the name on each `phonezero-task` (`spoken_name`, `disclose_ai`). Do **not** put name or disclose on the Configure / Edit Values card. If they turn disclaimer OFF and the Builder agent already exists, re-paste `prompts/voice-agent.md` once with `{disclosure_clause}` empty — that paste is the only way to change a baked prompt.
+
+Before **every later call**, ask the Agent Name again unless they already said to always use one. Then reuse it and show it as Spoken as on the plan.
 
 ### 2. Uninstall the wrong plugin
 
@@ -122,7 +128,7 @@ xAI: `list_phone_numbers` → `register_byo_number` if the DID is not `byo_trunk
 
 ### 8. Calls
 
-You already have SID, TeXML id, From, spoken name, disclose, and the Telnyx destination list. Read `phonezero-runtime` (plan-first, two attempts, `succeeded` / `booked` only with a live-person confirmation in the transcript). Match a shipped skill, or **interview into a `phonezero-task`** — do not ask them to paste a `SKILL.md` or write `~/.cursor/skills`. Owner setup-test to **their own confirmed number** may skip the hours guard — restaurants may not. The call plan must show Spoken as and only dial countries on that Telnyx whitelist. Per-call they may still override the spoken name. If they ask to save the shape as a template, pick memory or `put_template` and say where it went.
+You already have SID, TeXML id, From, disclose, and the Telnyx destination list. **Ask the Agent Name** before the call plan unless they already said to always use the same name. Read `phonezero-runtime` (plan-first, two attempts, `succeeded` / `booked` only with a live-person confirmation in the transcript). Match a shipped skill, or **interview into a `phonezero-task`** — do not ask them to paste a `SKILL.md` or write `~/.cursor/skills`. Owner setup-test to **their own confirmed number** may skip the hours guard — restaurants may not. The call plan must show Spoken as and only dial countries on that Telnyx whitelist. If they ask to save the shape as a template, pick memory or `put_template` and say where it went.
 
 On explicit yes, in this order — do not resolve SID again:
 

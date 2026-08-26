@@ -9,7 +9,7 @@ Shared outbound loop for every phone skill. First-party skills (`book-restaurant
 
 Destinations must be in the Telnyx outbound voice profile **attached to the PhoneZero TeXML app** (`whitelisted_destinations`, ISO 3166-1 alpha-2). Read that list via Telnyx MCP — it is **not** a PhoneZero plugin variable. The profile may have **any name** and any country list the user set. Never filter by a hardcoded name such as `PhoneZero US-only`. Never place a call to a country not on that list. Never place bulk or multi-destination calls. Never auto-dial.
 
-**Defaults (not compliance advice).** Destinations default `US` on a new Telnyx profile. Disclose defaults on (per-task `disclose_ai`, and the one-time Builder `{disclosure_clause}`). Every call is recorded (dual-channel); the opener says so. Spoken name defaults to PhoneZero per task. Task JSON is English; after pickup the voice agent speaks the answerer’s language. The person using this sample is solely responsible for complying with all applicable laws and vendor terms — see repo [DISCLAIMER.md](../../../../DISCLAIMER.md). Do not give legal guidance in chat.
+**Defaults (not compliance advice).** Destinations default `US` on a new Telnyx profile. Disclose defaults on (per-task `disclose_ai`, and the one-time Builder `{disclosure_clause}`). Every call is recorded (dual-channel); the opener says so. Spoken name: **Grok always asks** unless they said to always use one; Cursor defaults PhoneZero. Task JSON is English; after pickup the voice agent speaks the answerer’s language. The person using this sample is solely responsible for complying with all applicable laws and vendor terms — see repo [DISCLAIMER.md](../../../../DISCLAIMER.md). Do not give legal guidance in chat.
 
 **Bootstrap from repo.** `AGENTS.md` at the repo root is the hook. **Grok Bot** (pointed at `https://github.com/function1st/PhoneZero` or “set this up”): execute **Grok Bot — set this up** in `AGENTS.md` first — do not + Add the Cursor plugin. **Cursor IDE:** this file’s Setup, after the Cursor package is installed. After install or update, start a **new** conversation.
 
@@ -27,9 +27,9 @@ Before collecting a task or touching Telnyx, verify these variables are present.
 | `TELNYX_ACCOUNT_SID` | **Not on the Configure card.** Telnyx MCP has **no** `whoami` tool. `invoke_api_endpoint` `list_billing_groups` → first `data[].organization_id`. Developer curl `GET /v2/whoami` is the same value. TeXML paths: `/v2/texml/Accounts/{TELNYX_ACCOUNT_SID}/…`. |
 | `PHONEZERO_TEXML_APP_ID` | **Not on the Configure card.** Resolve with Telnyx MCP: list TeXML apps, use the one named `PhoneZero`. |
 | `PHONEZERO_XAI_COLLECTION_ID` | **Not on the Configure card.** Find-or-create collection name `PhoneZero bookings`. Attach it to the Builder agent (knowledge / file search). |
-| Spoken name / disclose | **Not on the Configure card.** Per-task: `spoken_name` and `disclose_ai` in `phonezero-task.json`. Default PhoneZero / true if they do not say otherwise. `{disclosure_clause}` is substituted once when pasting the Builder prompt. |
+| Spoken name / disclose | **Not on the Configure card.** Per-task: `spoken_name` and `disclose_ai` in `phonezero-task.json`. **Grok:** always ask the spoken name unless they said to always use one (see §2). Cursor: default PhoneZero / true if they do not say otherwise. `{disclosure_clause}` is substituted once when pasting the Builder prompt. |
 
-Call-time required: working Telnyx MCP, working PhoneZero xAI MCP, a From number from `get_call_config` or Telnyx list. Resolve `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` **before** the call plan — not after `put_task`. SID: `invoke_api_endpoint` `list_billing_groups` `{ "jq_filter": "[.data[].organization_id] | unique" }`. TeXML id: `invoke_api_endpoint` `list_texml_applications` `{ "filter": { "friendly_name": "PhoneZero" }, "jq_filter": ".data[] | {id, friendly_name, outbound}" }`. Destinations: that app’s `outbound.outbound_voice_profile_id`, then `invoke_api_endpoint` `list_outbound_voice_profiles` `{ "jq_filter": ".data[] | {id, name, whitelisted_destinations}" }` and pick the matching `id`. **No name filter.** Spoken name / disclose come from this call’s collect (defaults PhoneZero / true). Collection via xAI MCP `ensure_collection`.
+Call-time required: working Telnyx MCP, working PhoneZero xAI MCP, a From number from `get_call_config` or Telnyx list. Resolve `TELNYX_ACCOUNT_SID` and `PHONEZERO_TEXML_APP_ID` **before** the call plan — not after `put_task`. SID: `invoke_api_endpoint` `list_billing_groups` `{ "jq_filter": "[.data[].organization_id] | unique" }`. TeXML id: `invoke_api_endpoint` `list_texml_applications` `{ "filter": { "friendly_name": "PhoneZero" }, "jq_filter": ".data[] | {id, friendly_name, outbound}" }`. Destinations: that app’s `outbound.outbound_voice_profile_id`, then `invoke_api_endpoint` `list_outbound_voice_profiles` `{ "jq_filter": ".data[] | {id, name, whitelisted_destinations}" }` and pick the matching `id`. **No name filter.** Spoken name / disclose: Grok asks the name unless they said always use one; Cursor defaults PhoneZero / true. Collection via xAI MCP `ensure_collection`.
 
 If Telnyx MCP or xAI MCP is missing / 401s, or From cannot be resolved: **stop. Do not dial.** Tell the user to re-save Plugins → Configure and start a **new** conversation, then `/setup-phone-calling`. Never paste keys in chat. Never `source ~/.phonezero/env`. An old chat not seeing new MCP tools is not a failure.
 
@@ -37,7 +37,7 @@ Do not invent `{TELNYX_ACCOUNT_SID}`.
 
 ## Setup (when the user says *Set up phone calling* or runs `/setup-phone-calling`)
 
-Human/developer mirrors: `docs/SETUP.md`, and `scripts/provision.sh` — developer-only, run on a personal machine that may hold keys, never on this computer. Never `source ~/.phonezero/env`. Telnyx account + KYC + buying the DID stay manual. Telnyx API steps go through the Telnyx MCP. xAI Files / collections / STT / phone-numbers go through the PhoneZero xAI MCP on **both** hosts. **Grok Bot:** add that stdio `xai` server if `put_task` / `put_booking` is missing (`AGENTS.md` / README). REST on `api.x.ai` is fallback only. Do not take the key from chat. **Grok must ask** spoken name and AI disclaimer ON/OFF — do not silently keep PhoneZero / true. Destination countries are the Telnyx profile whitelist; read and show them, do not ask as a PhoneZero field.
+Human/developer mirrors: `docs/SETUP.md`, and `scripts/provision.sh` — developer-only, run on a personal machine that may hold keys, never on this computer. Never `source ~/.phonezero/env`. Telnyx account + KYC + buying the DID stay manual. Telnyx API steps go through the Telnyx MCP. xAI Files / collections / STT / phone-numbers go through the PhoneZero xAI MCP on **both** hosts. **Grok Bot:** add that stdio `xai` server if `put_task` / `put_booking` is missing (`AGENTS.md` / README). REST on `api.x.ai` is fallback only. Do not take the key from chat. **Grok must ask** the Agent Name (spoken name) and wait — do not silently keep PhoneZero. Skip that question only if they already said to always use a specific name. Also ask AI disclaimer ON/OFF. Destination countries are the Telnyx profile whitelist; read and show them, do not ask as a PhoneZero field.
 
 **First message, before any API call:**
 
@@ -63,7 +63,7 @@ If any of those are missing, **stop**.
 - Fallback (no plugin, Cursor IDE): `"telnyx": {"command":"npx","args":["-y","@telnyx/mcp"],"env":{"TELNYX_API_KEY":"${env:TELNYX_API_KEY}"}}`. Never the literal key in the file or chat.
 - **Verify with a `tools/call`, never the tool count.** Call `list_api_endpoints`. If `get_call_config.from_wired` is false, take From from Telnyx `list_phone_numbers` (PhoneZero TeXML DID).
 
-**Keys first.** Required on the Configure card: `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `XAI_API_KEY`. Spoken name and disclose are **not** on the card — ask in chat (Grok: the `AGENTS.md` call-settings card; Cursor: per task, default PhoneZero / true) and write them into `phonezero-task.json`. Destinations are **not** on the card. Read destinations from Telnyx (the profile attached to the PhoneZero TeXML app → `whitelisted_destinations`) and show the **actual profile name** plus the codes. PATCH that profile only if they ask to add/remove countries (Mission Control → Voice → Outbound voice profiles is the same setting). Account SID, TeXML app id, and collection id are **not** on the card. If Telnyx MCP or the PhoneZero xAI MCP is unwired, send the user to Plugins → Configure and a **new** conversation. Then, field-for-field:
+**Keys first.** Required on the Configure card: `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `XAI_API_KEY`. Spoken name and disclose are **not** on the card — ask in chat (Grok: always ask the Agent Name unless they said to always use one; Cursor: per task, default PhoneZero / true) and write them into `phonezero-task.json`. Destinations are **not** on the card. Read destinations from Telnyx (the profile attached to the PhoneZero TeXML app → `whitelisted_destinations`) and show the **actual profile name** plus the codes. PATCH that profile only if they ask to add/remove countries (Mission Control → Voice → Outbound voice profiles is the same setting). Account SID, TeXML app id, and collection id are **not** on the card. If Telnyx MCP or the PhoneZero xAI MCP is unwired, send the user to Plugins → Configure and a **new** conversation. Then, field-for-field:
 
 1. `TELNYX_ACCOUNT_SID` via Telnyx MCP `invoke_api_endpoint` `list_billing_groups` (`data[].organization_id`). Do not search the catalog for `whoami`.
 2. Outbound voice profile — **do not require a specific name.** Resolve in this order: (a) the profile already attached to the PhoneZero TeXML app (`outbound.outbound_voice_profile_id`); (b) if they have exactly one outbound voice profile, use it; (c) if they have several, list `{id, name, whitelisted_destinations}` and ask which to attach; (d) if they have none, create one. Create defaults: name `PhoneZero` unless they pick another, `traffic_type=conversational`, `service_plan=global`, `usage_payment_method=rate-deck`, `whitelisted_destinations` default `["US"]` **on create only**, `daily_spend_limit="5.00"`, `daily_spend_limit_enabled=true` (`POST /v2/outbound_voice_profiles`; any other combo → Telnyx error 10015). **This Telnyx profile is the destination enforcement** — Telnyx rejects calls outside `whitelisted_destinations`. Keep an existing whitelist and name. `PATCH` only when the user asks to add or remove countries. They may name the profile anything and set any region list in Telnyx Mission Control → Voice → Outbound voice profiles.
@@ -95,6 +95,8 @@ Match the user ask:
 - Grok, no match → **Ad-hoc interview** below. Do not ask them to write a skill folder.
 
 Do not dial until the bound skill (or ad-hoc interview) has every required field. Fail closed after one clarifying turn if the task stays vague.
+
+**Grok Bot — spoken name.** Always ask what Agent Name the callee should hear (`spoken_name`). Wait for a reply. Do **not** silently use PhoneZero or any leftover default. PhoneZero is an example they may choose, not a name you apply without asking. **Exception:** if they have already instructed you to **always use the same name** (this chat, or Grok memory), reuse it, show it as Spoken as on the plan, and do not re-ask unless they change it. A one-call name does not stick — ask again next call. If they say “always use {name},” keep it in session and write it to Grok memory when the host has it. Not a Configure / Edit Values field. Cursor IDE may still default to PhoneZero.
 
 ## 3. Plan-first confirmation
 
@@ -165,7 +167,7 @@ Envelope (no extra top-level keys except `kind`):
 }
 ```
 
-`disclose_ai` defaults true unless they turned it off for this call (or at setup, for the Builder paste). `{agent_name}` is this call's spoken name (default PhoneZero). Keep `playbook` short — collection search truncates.
+`disclose_ai` defaults true unless they turned it off for this call (or at setup, for the Builder paste). `{agent_name}` is this call's spoken name (Grok: they answered, or the always-use name; Cursor: default PhoneZero). Keep `playbook` short — collection search truncates.
 
 **Both hosts:** PhoneZero xAI MCP `put_task` (or `put_booking` alias). **Grok Bot:** if those tools are missing, add stdio `xai` from `plugins/phonezero/mcp.json` (secure-field env, not `${…}`) — do not say upload is impossible. Fallback: `https://api.x.ai/v1` Bearer; sequence is `putTask` / `putBooking` in `scripts/xai-mcp.mjs`. Never echo the key. If the user said xAI is already set up, do not open the Builder.
 
@@ -316,7 +318,7 @@ Do **not** ask them to paste a `SKILL.md`, clone a gist, or write a skill folder
 | What must a **live person** say before we call this a win? | `success` |
 | What to leave on voicemail | `voicemail` |
 | Any extra facts | `facts` |
-| Spoken name override | `spoken_name` |
+| Spoken name (Grok: always ask unless they said always use one) | `spoken_name` |
 
 4. Same safety as shipped skills. Show the JSON in the call plan. Dial only on yes. Classify with §8 + this brief’s `success` / `constraints`.
 5. Do not open the Builder. The JSON is the shape of the call.
@@ -337,6 +339,7 @@ Cursor may save a template as a local skill folder when they ask. That is not th
 ## Hard rules
 
 - No call without §1 call-time variables, a complete collect (skill or ad-hoc), an hours check, and an explicit yes to the current plan.
+- Grok Bot: no call plan until they have answered the Agent Name, unless they already said to always use a specific name.
 - No `succeeded` / `booked` unless all five gates in §8 hold.
 - No secrets, no keys in chat, no non-fixture numbers written into skills or examples.
 - One callee, one task, max two attempts, 20 minutes apart.

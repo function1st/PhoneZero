@@ -33,7 +33,7 @@ The Telnyx MCP cannot run until `TELNYX_API_KEY` is saved as a plugin variable.
 
    After any update: re-enter **every** required field on the Configure card (a field left blank is cleared on save — see step 9) and start a **new** conversation (existing chats do not pick up a newly installed or updated plugin).
 
-   **Grok Bot** (point at `https://github.com/function1st/PhoneZero` and say *set this up*): the Bot follows [AGENTS.md](../AGENTS.md) **Grok Bot — set this up**. It must ask spoken name and AI disclaimer ON/OFF. Destination countries are the Telnyx voice-profile whitelist (not a PhoneZero field). Do not Customize → + Add this repo as the Cursor plugin. Add Telnyx as HTTP MCP `https://api.telnyx.com/v2/mcp` with `Authorization: Bearer` in the MCP form. Add/use the PhoneZero xAI stdio MCP. Resolve SID via `list_billing_groups` (not `whoami`). Do not click Authenticate.
+   **Grok Bot** (point at `https://github.com/function1st/PhoneZero` and say *set this up*): the Bot follows [AGENTS.md](../AGENTS.md) **Grok Bot — set this up**. It must **always ask** the Agent Name (and whether to always use it) plus AI disclaimer ON/OFF — do not silently keep PhoneZero. Destination countries are the Telnyx voice-profile whitelist (not a PhoneZero field). Do not Customize → + Add this repo as the Cursor plugin. Add Telnyx as HTTP MCP `https://api.telnyx.com/v2/mcp` with `Authorization: Bearer` in the MCP form. Add/use the PhoneZero xAI stdio MCP. Resolve SID via `list_billing_groups` (not `whoami`). Do not click Authenticate.
 
    If none of those are available on Cursor IDE: `"telnyx": {"command":"npx","args":["-y","@telnyx/mcp"],"env":{"TELNYX_API_KEY":"${env:TELNYX_API_KEY}"}}`. A masked secret card alone does **not** authenticate an MCP.
 
@@ -56,7 +56,7 @@ To add a country (e.g. Japan): change that Telnyx whitelist in Mission Control, 
 | `TELNYX_API_KEY` | plugin variable (secret) | A | Env for Telnyx stdio MCP (`npx @telnyx/mcp`). Never in chat. |
 | `PHONEZERO_FROM_NUMBER` | plugin variable | A | Telnyx US DID (E.164): outbound caller ID and SIP bridge target (`sip:{PHONEZERO_FROM_NUMBER}@sip.voice.x.ai;transport=tls`). |
 | `XAI_API_KEY` | plugin variable (secret) | A | From a team with **ZDR off**. Injected into the PhoneZero xAI MCP only (Files, collections, STT, phone-numbers). Not in the agent shell. |
-| Spoken name / disclose | per-task (`phonezero-task.json`) | chat | `spoken_name` and `disclose_ai`. Default PhoneZero / true. Not on the Configure card. `{disclosure_clause}` is pasted once into the Builder prompt. |
+| Spoken name / disclose | per-task (`phonezero-task.json`) | chat | `spoken_name` and `disclose_ai`. Grok always asks the name unless they said always use one. Cursor default PhoneZero / true. Not on the Configure card. `{disclosure_clause}` is pasted once into the Builder prompt. |
 | Destinations | Telnyx voice profile on the PhoneZero TeXML app | Telnyx | `whitelisted_destinations` of whatever profile is attached (`outbound.outbound_voice_profile_id`). Any name, any country list. Mission Control → Voice → Outbound voice profiles. Not a PhoneZero plugin variable. |
 | `TELNYX_ACCOUNT_SID` | resolved in session | B | TeXML REST account SID. MCP: `list_billing_groups` → `data[].organization_id` (no `whoami` tool). Developer curl: `GET /v2/whoami` → `data.organization_id`. Not on the Configure card. |
 | `PHONEZERO_TEXML_APP_ID` | resolved in session | B | TeXML application SID. Not on the Configure card. |
