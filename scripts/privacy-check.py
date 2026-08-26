@@ -30,6 +30,7 @@ TRAILER_RE = re.compile(
 ALLOWED_AUTHOR_EMAIL_RES = (
     re.compile(r"^[^@\s]+@users\.noreply\.github\.com$", re.IGNORECASE),
     re.compile(r"^[^@\s]+@noreply\.github\.com$", re.IGNORECASE),
+    re.compile(r"^noreply@github\.com$", re.IGNORECASE),
     re.compile(r"^cursoragent@cursor\.com$", re.IGNORECASE),
 )
 
@@ -224,6 +225,19 @@ def self_test() -> None:
         leftover = [row for row in scan_authors(git_repo) if row.endswith("@users.noreply.github.com")]
         if leftover:
             raise SystemExit(f"self-test: noreply author was flagged: {leftover}")
+
+        merge_env = {
+            "GIT_AUTHOR_NAME": "GitHub",
+            "GIT_AUTHOR_EMAIL": "noreply@github.com",
+            "GIT_COMMITTER_NAME": "GitHub",
+            "GIT_COMMITTER_EMAIL": "noreply@github.com",
+        }
+        (git_repo / "README").write_text("z\n", encoding="utf-8")
+        _git(git_repo, "add", "README")
+        _git(git_repo, "commit", "-m", "merge", extra_env=merge_env)
+        leftover = [row for row in scan_authors(git_repo) if "noreply@github.com" in row]
+        if leftover:
+            raise SystemExit(f"self-test: GitHub merge author was flagged: {leftover}")
 
         (root / "mail-ok.txt").write_text(
             "noreply function1st@users.noreply.github.com fixture reporter@example.com\n",
