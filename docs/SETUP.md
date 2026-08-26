@@ -38,7 +38,7 @@ The Telnyx MCP cannot run until `TELNYX_API_KEY` is saved as a plugin variable.
    If none of those are available on Cursor IDE: `"telnyx": {"command":"npx","args":["-y","@telnyx/mcp"],"env":{"TELNYX_API_KEY":"${env:TELNYX_API_KEY}"}}`. A masked secret card alone does **not** authenticate an MCP.
 
    Open the Cursor dashboard → **Plugins → Configure** for PhoneZero.
-9. Enter **only** these three required fields. Name / disclose already default to PhoneZero / true. Destination countries are **not** on this card — they live on the Telnyx outbound voice profile. **When you re-save this config card, re-enter EVERY required field, not just the changed one.** Saving replaces all of PhoneZero's setup values; a field left blank is cleared.
+9. Enter **only** these three required fields. Spoken name and disclose are per-task (chat), not this card. Destination countries are **not** on this card — they live on the Telnyx outbound voice profile. **When you re-save this config card, re-enter EVERY required field, not just the changed one.** Saving replaces all of PhoneZero's setup values; a field left blank is cleared.
    - `TELNYX_API_KEY` — **as a plugin variable**, not in chat. The plugin injects it as env into the Telnyx stdio MCP. You need a Telnyx DID first.
    - `PHONEZERO_FROM_NUMBER` — that DID, E.164.
    - `XAI_API_KEY` — from the ZDR-off team (step 5). Goes to the PhoneZero xAI MCP, not the agent shell. Do not paste API keys in chat.
@@ -56,8 +56,7 @@ To add a country (e.g. Japan): change that Telnyx whitelist in Mission Control, 
 | `TELNYX_API_KEY` | plugin variable (secret) | A | Env for Telnyx stdio MCP (`npx @telnyx/mcp`). Never in chat. |
 | `PHONEZERO_FROM_NUMBER` | plugin variable | A | Telnyx US DID (E.164): outbound caller ID and SIP bridge target (`sip:{PHONEZERO_FROM_NUMBER}@sip.voice.x.ai;transport=tls`). |
 | `XAI_API_KEY` | plugin variable (secret) | A | From a team with **ZDR off**. Injected into the PhoneZero xAI MCP only (Files, collections, STT, phone-numbers). Not in the agent shell. |
-| `PHONEZERO_AGENT_NAME` | plugin variable (default `PhoneZero`) | A | Default `spoken_name` in `phonezero-task.json`. Not baked into the Builder prompt. |
-| `PHONEZERO_DISCLOSE_AI` | plugin variable (boolean, default true) | A | Substituted into the Builder prompt **once** at agent creation, and set as `disclose_ai` in each task JSON. |
+| Spoken name / disclose | per-task (`phonezero-task.json`) | chat | `spoken_name` and `disclose_ai`. Default PhoneZero / true. Not on the Configure card. `{disclosure_clause}` is pasted once into the Builder prompt. |
 | Destinations | Telnyx voice profile **PhoneZero US-only** | Telnyx | `whitelisted_destinations`. Mission Control → Voice → Outbound voice profiles. Not a PhoneZero plugin variable. |
 | `TELNYX_ACCOUNT_SID` | resolved in session | B | TeXML REST account SID. MCP: `list_billing_groups` → `data[].organization_id` (no `whoami` tool). Developer curl: `GET /v2/whoami` → `data.organization_id`. Not on the Configure card. |
 | `PHONEZERO_TEXML_APP_ID` | resolved in session | B | TeXML application SID. Not on the Configure card. |
@@ -84,7 +83,7 @@ Account, KYC, and the DID stay manual. Everything after that is API-automatable.
 14. **Create the Voice Agent (once, in Builder).** There is no public create API (`/v1/agents` is not enabled). Preferred: the Bot opens [https://console.x.ai](https://console.x.ai) with your approved session. Fallback: you do this and give the Bot the `agentId`. On the **same ZDR-off team** as the API key:
 
     1. Voice Agent Builder → create one agent. Name is yours (spoken name at call time comes from `phonezero-task.json`, not this label).
-    2. Paste the body of [`plugins/phonezero/prompts/voice-agent.md`](../plugins/phonezero/prompts/voice-agent.md) (system prompt only). Substitute `{disclosure_clause}` once: `, an automated assistant,` if `PHONEZERO_DISCLOSE_AI` is on, else empty. Do **not** substitute a spoken name. Save. Do not add a per-call TASK BRIEF — facts are the collection file. Never edit the Builder prompt per call. **Re-paste** this interpreter if the agent still searches `phonezero-booking.json` or still says it is only booking tables. If this DID is also used in production, say so before pasting.
+    2. Paste the body of [`plugins/phonezero/prompts/voice-agent.md`](../plugins/phonezero/prompts/voice-agent.md) (system prompt only). Substitute `{disclosure_clause}` once: `, an automated assistant,` if they want disclose on (default), else empty. Do **not** substitute a spoken name. Save. Do not add a per-call TASK BRIEF — facts are the collection file. Never edit the Builder prompt per call. **Re-paste** this interpreter if the agent still searches `phonezero-booking.json` or still says it is only booking tables. If this DID is also used in production, say so before pasting.
     3. **Welcome message: on.** Text exactly `PhoneZero is ready!` **Caller can interrupt: on.** Empty welcome delays `collections_search` until the callee says hello. This line is spoken on the agent's SIP ear during the TeXML pause; the callee is not bridged yet and must not hear it. It is the session-start cue (search `phonezero-task.json` now), not a greeting. Do not put task facts in it.
     4. **Knowledge / file search:** attach collection **PhoneZero bookings**. Without this, the agent invents the ask.
     5. **`end_call` tool: on.** Name exactly `end_call`. Description = the full contents of [`plugins/phonezero/prompts/end_call.md`](../plugins/phonezero/prompts/end_call.md) (no extra words). The system prompt already calls this after a spoken goodbye. A silent hang-up with no goodbye has dropped live calls — do not leave the tool off.
@@ -92,7 +91,7 @@ Account, KYC, and the DID stay manual. Everything after that is API-automatable.
     7. **Guardrails** if shown: stay inside `constraints`, verbatim read-back of `success`, no invented confirmation.
     8. The wizard attaches the agent to a **new free xAI number**. **Ignore that number.** PhoneZero always SIP-bridges to your Telnyx DID.
 
-    `PHONEZERO_DISCLOSE_AI` is baked into the prompt at this paste. Toggling the plugin variable later does not change the agent — edit the prompt in Builder.
+    `{disclosure_clause}` is baked into the prompt at this paste (`, an automated assistant,` if they want disclose on, else empty). Changing your mind later means re-paste — there is no Configure toggle.
 
 15. **Attach the agent to the registered Telnyx DID** (never the wizard's free number). `GET https://api.x.ai/v2/phone-numbers` → find YOUR DID's `phoneNumberId` (`origin` `byo_trunk`; E.164 matches `PHONEZERO_FROM_NUMBER`) → `PATCH https://api.x.ai/v2/phone-numbers/{phoneNumberId}` body `{"phoneNumber":{"agentId":"agent_…"},"fieldMask":{"paths":["agent_id"]}}` — protobuf FieldMask style; a flat `{"agentId":…}` is rejected. Copy `agentId` from the wizard number row in the same GET, then PATCH it onto the DID. `provision.sh` does this when `PHONEZERO_XAI_AGENT_ID` is set. Or attach in Builder **to the Telnyx DID**.
 16. Set a **Telnyx spend cap** on the outbound voice profile (enable daily spend limit; `provision.sh` sets `$5.00`). Caps reset 00:00 UTC.

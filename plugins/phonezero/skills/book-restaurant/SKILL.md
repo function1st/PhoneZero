@@ -17,7 +17,7 @@ Read `phonezero-runtime` for Setup, preconditions, plan-first, hours hard cap, d
 | Restaurant-local hours when hours unknown | 10:30–20:30 restaurant-local (user TZ if unknown) | user-stated hours |
 | Window if they said “around 7” | propose preferred ± 30–60 min + ranked in-window slots | user-supplied window |
 | Calendar offer after `succeeded` | offer ~90 minutes | skip |
-| Spoken name | `PHONEZERO_AGENT_NAME` | per-call |
+| Spoken name | PhoneZero | per-call (`spoken_name` in the brief) |
 
 ## Collect
 

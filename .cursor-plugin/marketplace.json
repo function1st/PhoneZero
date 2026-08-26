@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Phone skills for voice tasks (restaurant booking first). Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder.",
-    "version": "0.4.0"
+    "version": "0.4.1"
   },
   "plugins": [
     {

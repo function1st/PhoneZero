@@ -49,7 +49,7 @@ const TOOLS = [
   {
     name: "get_call_config",
     description:
-      "Non-secret PhoneZero call config from the Configure card (From, spoken name, disclose). Destinations are the Telnyx voice-profile whitelist, not this tool. Never returns API keys.",
+      "Non-secret PhoneZero call config (From). Spoken name and disclose are per-task, not Configure. Destinations are the Telnyx voice-profile whitelist, not this tool. Never returns API keys.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -808,7 +808,7 @@ async function handle(msg) {
     ok(id, {
       protocolVersion: params?.protocolVersion || "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "phonezero-xai", version: "0.4.0" },
+      serverInfo: { name: "phonezero-xai", version: "0.4.1" },
     });
     return;
   }

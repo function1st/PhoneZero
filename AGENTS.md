@@ -43,7 +43,7 @@ Call settings (defaults — change any now)
    You may turn this OFF.
 ```
 
-Keep their answers in session. Write them into Edit Values / xAI env: `PHONEZERO_AGENT_NAME`, `PHONEZERO_DISCLOSE_AI` (or `PHONEZERO_CFG_*`). If they turn disclaimer OFF and the Builder agent already exists, re-paste `prompts/voice-agent.md` once with `{disclosure_clause}` empty — toggling the variable does not change a baked prompt.
+Keep their answers in session and put them on each `phonezero-task` (`spoken_name`, `disclose_ai`). Do **not** put name or disclose on the Configure / Edit Values card. If they turn disclaimer OFF and the Builder agent already exists, re-paste `prompts/voice-agent.md` once with `{disclosure_clause}` empty — that paste is the only way to change a baked prompt. Per-call they may still pick a different spoken name.
 
 ### 2. Uninstall the wrong plugin
 
@@ -61,7 +61,7 @@ Customize → **MCPs** → add **HTTP** (not stdio, not `npx`):
 | URL | `https://api.telnyx.com/v2/mcp` |
 | Header | `Authorization` = `Bearer ` + key **in that form** |
 
-If Grok-native **phonezero-grok** is available (not Cursor + Add): install it, **Edit Values** for `TELNYX_API_KEY`, From, `XAI_API_KEY`, plus name / disclose from **1**. If a secret field needs the human, open that field and let them type.
+If Grok-native **phonezero-grok** is available (not Cursor + Add): install it, **Edit Values** for `TELNYX_API_KEY`, From, `XAI_API_KEY` only. If a secret field needs the human, open that field and let them type.
 
 [`.grok/config.toml`](.grok/config.toml) is the same HTTP Telnyx for hosts that load project Grok MCP.
 
@@ -74,7 +74,7 @@ Call `list_api_endpoints`. Real endpoint list → **5**. `401` / **10009** / con
 Prefer the PhoneZero xAI MCP (8 tools). “No Grok xAI *package*” does **not** mean you cannot upload. Hosts are always `api.x.ai`.
 
 - If `put_task` or `put_booking` is already listed → skip adding a connector.
-- Else Customize → MCPs → **stdio** (not HTTP) name `xai`. Copy the `xai` block from [`plugins/phonezero/mcp.json`](plugins/phonezero/mcp.json) (same launcher is in [`plugins/phonezero-grok/.mcp.json`](plugins/phonezero-grok/.mcp.json)). Bind **real** values from secure fields: `XAI_API_KEY` or `PHONEZERO_CFG_XAI_API_KEY`, `PHONEZERO_FROM_NUMBER` or `PHONEZERO_CFG_FROM_NUMBER`, plus name / disclose from **1**. Do **not** leave literal `${…}` in env.
+- Else Customize → MCPs → **stdio** (not HTTP) name `xai`. Copy the `xai` block from [`plugins/phonezero/mcp.json`](plugins/phonezero/mcp.json) (same launcher is in [`plugins/phonezero-grok/.mcp.json`](plugins/phonezero-grok/.mcp.json)). Bind **real** values from secure fields: `XAI_API_KEY` or `PHONEZERO_CFG_XAI_API_KEY`, `PHONEZERO_FROM_NUMBER` or `PHONEZERO_CFG_FROM_NUMBER`. Do **not** leave literal `${…}` in env.
 
 Prove: `get_call_config` (`xai_key_wired`, `from_wired`, From last-4) then `ensure_collection` (name `PhoneZero bookings`).
 
@@ -139,7 +139,7 @@ On explicit yes, in this order — do not resolve SID again:
 
 1. Read [`plugins/phonezero/skills/phonezero-runtime/SKILL.md`](plugins/phonezero/skills/phonezero-runtime/SKILL.md) and [`plugins/phonezero/skills/book-restaurant/SKILL.md`](plugins/phonezero/skills/book-restaurant/SKILL.md) in full. Commands: `/setup-phone-calling`, `/book-table`, `/book-restaurant`, `/confirm-business-hours`. Local skills: [`docs/SKILLS.md`](docs/SKILLS.md).
 2. Install the **Cursor** package only: [`.cursor-plugin/marketplace.json`](.cursor-plugin/marketplace.json) → [`plugins/phonezero/`](plugins/phonezero/). Channels: Customize → **+ Add** this repo root; Cursor Marketplace; copy `plugins/phonezero/` to `~/.cursor/plugins/local/phonezero`; or Team Marketplace import. Telnyx is stdio `npx @telnyx/mcp` + Configure `TELNYX_API_KEY`. Do **not** add hosted-HTTP Telnyx in this package (SSE GET 404 tombstone).
-3. Configure card: `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `XAI_API_KEY` (ZDR **off**). Name / disclose have defaults. Destinations are the Telnyx voice-profile whitelist, not this card. Do not put account SID, TeXML id, or collection id on the card. New conversation after install. Verify with `list_api_endpoints` and `get_call_config`.
+3. Configure card: `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `XAI_API_KEY` (ZDR **off**) only. Spoken name and disclose are per-task (chat), not this card. Destinations are the Telnyx voice-profile whitelist. Do not put account SID, TeXML id, or collection id on the card. New conversation after install. Verify with `list_api_endpoints` and `get_call_config`.
 4. Then run the skill Setup (Telnyx MCP + xAI MCP + Builder once). Session SID is MCP `list_billing_groups` → `organization_id` (not a `whoami` tool).
 
 Human walkthrough: [`docs/SETUP.md`](docs/SETUP.md). `scripts/provision.sh` is developer-only on a personal machine — never here.

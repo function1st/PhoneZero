@@ -760,7 +760,7 @@ if [ -n "${XAI_API_KEY:-}" ]; then
   echo "xai_agent_id=${XAI_AGENT_ATTACHED:-<not attached — Builder console, then PHONEZERO_XAI_AGENT_ID>}"
 fi
 echo
-echo "Set PHONEZERO_AGENT_NAME and PHONEZERO_DISCLOSE_AI in Plugins → Configure."
+echo "Spoken name and disclose are per-task (chat), not Plugins → Configure."
 echo "Enter TELNYX_API_KEY as a plugin variable (backend-held)."
 echo "Enter XAI_API_KEY via Grok Bot's secure secret request flow."
 echo "Destination countries are the Telnyx outbound voice profile PhoneZero US-only (Mission Control → Voice → Outbound voice profiles), not a plugin field."

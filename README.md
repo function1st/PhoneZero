@@ -59,7 +59,7 @@ Write answers into Edit Values / xAI env. If they turn disclaimer OFF and Builde
 | URL | `https://api.telnyx.com/v2/mcp` |
 | Header | `Authorization` = `Bearer ` + the key **in that form** |
 
-Not stdio, not `npx`. If Grok-native **phonezero-grok** exists: install it, **Edit Values** (keys **and** name / disclose from **1**). [`.grok/config.toml`](.grok/config.toml) is the same HTTP Telnyx if this Bot already loads project Grok MCP.
+Not stdio, not `npx`. If Grok-native **phonezero-grok** exists: install it, **Edit Values** (keys + From only). Name / disclose stay in chat, per task. [`.grok/config.toml`](.grok/config.toml) is the same HTTP Telnyx if this Bot already loads project Grok MCP.
 
 ### 4. Prove Telnyx
 
@@ -67,7 +67,7 @@ Not stdio, not `npx`. If Grok-native **phonezero-grok** exists: install it, **Ed
 
 ### 5. Add the PhoneZero xAI MCP
 
-If `put_task` or `put_booking` is already listed, skip. Else Customize → MCPs → **stdio** `xai`: copy `xai` from [`plugins/phonezero/mcp.json`](plugins/phonezero/mcp.json). Real secrets in env, not `${…}`, plus name / disclose from **1**. Prove: `get_call_config` + `ensure_collection` (`PhoneZero bookings`). If they said xAI is already set up: do **not** open the Builder. Ignore the wizard xAI number. Existing Builder agents need a one-time re-paste of [`prompts/voice-agent.md`](plugins/phonezero/prompts/voice-agent.md) and [`prompts/end_call.md`](plugins/phonezero/prompts/end_call.md) before custom skills will speak correctly.
+If `put_task` or `put_booking` is already listed, skip. Else Customize → MCPs → **stdio** `xai`: copy `xai` from [`plugins/phonezero/mcp.json`](plugins/phonezero/mcp.json). Real secrets in env, not `${…}`. Prove: `get_call_config` + `ensure_collection` (`PhoneZero bookings`). If they said xAI is already set up: do **not** open the Builder. Ignore the wizard xAI number. Existing Builder agents need a one-time re-paste of [`prompts/voice-agent.md`](plugins/phonezero/prompts/voice-agent.md) and [`prompts/end_call.md`](plugins/phonezero/prompts/end_call.md) before custom skills will speak correctly.
 
 Fallback only if stdio will not start: Bearer on `https://api.x.ai/v1` and `/v2` (`putBooking` in [`plugins/phonezero/scripts/xai-mcp.mjs`](plugins/phonezero/scripts/xai-mcp.mjs)). `403` + ZDR → stop.
 
@@ -94,7 +94,7 @@ Plan-first. Show Spoken as. Only dial countries on the Telnyx profile whitelist.
 
 1. Telnyx KYC + US DID; xAI team **ZDR off**; keys. [docs/SETUP.md](docs/SETUP.md).
 2. Install the **Cursor** package ([`.cursor-plugin/marketplace.json`](.cursor-plugin/marketplace.json) → [`plugins/phonezero/`](plugins/phonezero/)): Marketplace, Customize → **+ Add** this repo root, or `rsync -a plugins/phonezero/ ~/.cursor/plugins/local/phonezero/` then Reload Window.
-3. Plugins → Configure: `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `XAI_API_KEY`. Defaults for name / disclose. Destinations are Telnyx, not this card. Not SID / TeXML / collection ids. New chat. `list_api_endpoints` + `get_call_config`.
+3. Plugins → Configure: `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `XAI_API_KEY` only. Spoken name and disclose are per-task. Destinations are Telnyx, not this card. Not SID / TeXML / collection ids. New chat. `list_api_endpoints` + `get_call_config`.
 4. `/setup-phone-calling` then `/book-table` (or `/book-restaurant`, `/confirm-business-hours`). Local private skills: [docs/SKILLS.md](docs/SKILLS.md).
 
 Cursor Telnyx is stdio (`npx @telnyx/mcp`). Do not add hosted-HTTP Telnyx in the Cursor plugin (SSE GET 404 tombstone). `scripts/provision.sh` is developer-only on a personal machine — never on the Bot.
@@ -147,7 +147,7 @@ Keys live in Configure / MCP headers only — not the agent shell.
 This sample ships with:
 
 - **Destinations:** Telnyx outbound voice profile **PhoneZero US-only**, `whitelisted_destinations` default `US` on create (Mission Control → Voice → Outbound voice profiles)
-- **AI disclosure:** `PHONEZERO_DISCLOSE_AI` default **on**
+- **AI disclosure:** default **on** in each task (`disclose_ai`) and in the one-time Builder paste
 - **Spoken name:** `PhoneZero`
 - **Recording:** dual-channel Telnyx recording on every call; the opener says the call is on a recorded line
 - **Hours / attempts:** runtime + skill defaults (see [`plugins/phonezero/skills/phonezero-runtime/SKILL.md`](plugins/phonezero/skills/phonezero-runtime/SKILL.md))

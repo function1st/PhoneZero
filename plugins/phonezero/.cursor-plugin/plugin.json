@@ -1,7 +1,7 @@
 {
   "name": "phonezero",
   "displayName": "PhoneZero",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Phone skills for voice tasks (restaurant booking first). Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder. Then /setup-phone-calling.",
   "author": {
     "name": "Function1st"
@@ -41,18 +41,6 @@
         "type": "string",
         "title": "xAI API key",
         "description": "Secret. From an xAI team with ZDR OFF. Injected into the PhoneZero xAI MCP only — not the agent shell. After save, start a new conversation."
-      },
-      "PHONEZERO_AGENT_NAME": {
-        "type": "string",
-        "title": "Voice agent name",
-        "description": "Default spoken_name in phonezero-task.json. Not baked into the Builder prompt.",
-        "default": "PhoneZero"
-      },
-      "PHONEZERO_DISCLOSE_AI": {
-        "type": "boolean",
-        "title": "Disclose automated assistant",
-        "description": "When true, the Builder prompt (substituted once at agent creation) includes the automated-assistant clause. Default on.",
-        "default": true
       }
     },
     "required": [
