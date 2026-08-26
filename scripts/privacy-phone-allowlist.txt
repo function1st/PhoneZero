@@ -1,0 +1,8 @@
+# Exact reserved E.164 fixtures used in this repository.
+# Add an exact line before documenting any new example number.
++15555550100
++15555550199
+
+# Reserved NANP documentation block (555-01xx / +1555555xxxx).
+pattern:\+1555555[0-9]{4}
+pattern:555[-. ]?01[0-9]{2}

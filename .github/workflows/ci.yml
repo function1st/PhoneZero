@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install lint tools
+        run: sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y shellcheck libxml2-utils
+
+      - name: Shellcheck
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          scripts=(scripts/*.sh)
+          if ((${#scripts[@]})); then
+            shellcheck "${scripts[@]}"
+          else
+            echo "No scripts/*.sh present; skipping shellcheck"
+          fi
+
+      - name: Host MCP split
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          cursor = json.loads(Path("plugins/phonezero/mcp.json").read_text())
+          telnyx = cursor["mcpServers"]["telnyx"]
+          if telnyx.get("type") != "stdio" or "url" in telnyx:
+              raise SystemExit("Cursor mcp.json telnyx must stay stdio (no hosted URL)")
+          if "xai" not in cursor["mcpServers"]:
+              raise SystemExit("Cursor mcp.json must keep the xAI stdio server")
+
+          grok = json.loads(Path("plugins/phonezero-grok/.mcp.json").read_text())
+          gtel = grok["mcpServers"]["telnyx"]
+          if gtel.get("type") != "http" or gtel.get("url") != "https://api.telnyx.com/v2/mcp":
+              raise SystemExit("Grok .mcp.json telnyx must be hosted HTTP")
+          if grok["mcpServers"].get("xai", {}).get("type") != "stdio":
+              raise SystemExit("Grok .mcp.json must ship the xAI stdio server")
+          print("host MCP split ok")
+          PY
+
+      - name: xAI MCP self-test
+        run: |
+          set -euo pipefail
+          node plugins/phonezero/scripts/xai-mcp.mjs --self-test
+          node scripts/xai-mcp.mjs --self-test
+          node plugins/phonezero/scripts/launch-xai-mcp.mjs --resolve-only
+
+      - name: TeXML well-formed
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          xmls=(texml/*.xml plugins/phonezero/texml/*.xml)
+          if ((${#xmls[@]})); then
+            xmllint --noout "${xmls[@]}"
+          else
+            echo "No texml/*.xml present; skipping xmllint"
+          fi
+
+      # Generic E.164 plus separated US/NANP forms. Dates, semver, and $0.05
+      # do not match. Only scripts/privacy-phone-allowlist.txt is permitted.
+      # File-content emails must be GitHub noreply or RFC 2606 example.* .
+      # Commit authors must be a GitHub noreply (or cursoragent) identity.
+      - name: Privacy guards
+        run: |
+          set -euo pipefail
+          python3 scripts/privacy-check.py --self-test
+          python3 scripts/privacy-check.py

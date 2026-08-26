@@ -1,0 +1,44 @@
+# Manual-only. Deletes Actions runs whose head commit is not on this history.
+# Do not run on push — that would drop feature-branch and PR CI after a main merge.
+name: Purge unreachable Actions runs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Delete Actions runs for commits not on this history
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          keep="$(git rev-list HEAD)"
+          mapfile -t ids < <(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+              --jq '.workflow_runs[] | [.id, .head_sha] | @tsv' \
+              | while IFS=$'\t' read -r id sha; do
+                  if ! grep -qx "$sha" <<<"$keep"; then
+                    printf '%s\n' "$id"
+                  fi
+                done
+          )
+          if ((${#ids[@]} == 0)); then
+            echo "No obsolete runs"
+            exit 0
+          fi
+          echo "Deleting ${#ids[@]} obsolete run(s)"
+          for id in "${ids[@]}"; do
+            echo "DELETE actions/runs/${id}"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${id}"
+          done

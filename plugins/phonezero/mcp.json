@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "telnyx": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@telnyx/mcp"],
+      "env": {
+        "TELNYX_API_KEY": "${TELNYX_API_KEY}"
+      }
+    },
+    "xai": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "--input-type=module",
+        "-e",
+        "import { existsSync, readFileSync, writeFileSync } from 'node:fs'; import { homedir, tmpdir } from 'node:os'; import { join } from 'node:path'; import { pathToFileURL } from 'node:url'; const script = 'xai-mcp.mjs'; const isReal = (p) => { try { const t = readFileSync(p, 'utf8'); return t.includes('phonezero-xai') && t.includes('ensure_collection'); } catch { return false; } }; const roots = [process.env.PLUGIN_ROOT, process.env.CURSOR_PLUGIN_ROOT, process.env.GROK_PLUGIN_ROOT, join(process.cwd(), 'plugins', 'phonezero'), join(homedir(), '.cursor', 'plugins', 'local', 'phonezero'), '/workspace/plugins/phonezero'].filter(Boolean); const files = roots.map((r) => join(r, 'scripts', script)); files.push(join(process.cwd(), 'scripts', script)); const hit = files.find((p) => existsSync(p) && isReal(p)); const dest = hit || join(tmpdir(), 'phonezero-xai-mcp.mjs'); if (!hit) { const res = await fetch('https://raw.githubusercontent.com/function1st/PhoneZero/main/plugins/phonezero/scripts/xai-mcp.mjs'); if (!res.ok) throw new Error('PhoneZero xAI MCP not in this workspace (Grok Bot /workspace is not the plugin). GitHub fetch failed: ' + res.status); writeFileSync(dest, await res.text()); if (!isReal(dest)) throw new Error('Fetched xai-mcp.mjs is not the PhoneZero server'); } await import(pathToFileURL(dest).href);"
+      ],
+      "env": {
+        "PHONEZERO_CFG_XAI_API_KEY": "${XAI_API_KEY}",
+        "PHONEZERO_CFG_FROM_NUMBER": "${PHONEZERO_FROM_NUMBER}",
+        "PHONEZERO_CFG_AGENT_NAME": "${PHONEZERO_AGENT_NAME}",
+        "PHONEZERO_CFG_DISCLOSE_AI": "${PHONEZERO_DISCLOSE_AI}"
+      }
+    }
+  }
+}

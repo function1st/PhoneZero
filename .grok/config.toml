@@ -1,0 +1,9 @@
+# Grok Build / Grok Bot project MCP. Cursor IDE does not read this file.
+# Point the Bot at this repo, bind TELNYX_API_KEY via Edit Values / secrets
+# (never chat), then list_api_endpoints. Do not click Authenticate.
+
+[mcp_servers.telnyx]
+url = "https://api.telnyx.com/v2/mcp"
+
+[mcp_servers.telnyx.headers]
+Authorization = "Bearer ${TELNYX_API_KEY}"

@@ -1,0 +1,63 @@
+{
+  "name": "phonezero",
+  "displayName": "PhoneZero",
+  "version": "0.3.20",
+  "description": "Book a restaurant by phone. Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder. Then /setup-phone-calling.",
+  "author": {
+    "name": "Function1st"
+  },
+  "homepage": "https://github.com/function1st/PhoneZero",
+  "repository": "https://github.com/function1st/PhoneZero",
+  "license": "MIT",
+  "logo": "assets/logo.png",
+  "keywords": [
+    "phone",
+    "voice",
+    "telnyx",
+    "grok",
+    "grok-bot",
+    "reservations",
+    "calling",
+    "mcp"
+  ],
+  "skills": "./skills/phonezero",
+  "mcpServers": "./mcp.json",
+  "commands": "./commands",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "TELNYX_API_KEY": {
+        "type": "string",
+        "title": "Telnyx API key",
+        "description": "Secret. You need a Telnyx DID first. Injected as TELNYX_API_KEY into the Telnyx stdio MCP. Never paste this in chat."
+      },
+      "PHONEZERO_FROM_NUMBER": {
+        "type": "string",
+        "title": "From number",
+        "description": "The Telnyx US DID you already bought, E.164 (example fixture +15555550100). Caller ID and SIP bridge target."
+      },
+      "XAI_API_KEY": {
+        "type": "string",
+        "title": "xAI API key",
+        "description": "Secret. From an xAI team with ZDR OFF. Injected into the PhoneZero xAI MCP only — not the agent shell. After save, start a new conversation."
+      },
+      "PHONEZERO_AGENT_NAME": {
+        "type": "string",
+        "title": "Voice agent name",
+        "description": "Default spoken_name in phonezero-booking.json. Not baked into the Builder prompt.",
+        "default": "PhoneZero"
+      },
+      "PHONEZERO_DISCLOSE_AI": {
+        "type": "boolean",
+        "title": "Disclose automated assistant",
+        "description": "When true, the Builder prompt (substituted once at agent creation) includes the automated-assistant clause. Default on.",
+        "default": true
+      }
+    },
+    "required": [
+      "TELNYX_API_KEY",
+      "PHONEZERO_FROM_NUMBER",
+      "XAI_API_KEY"
+    ]
+  }
+}
