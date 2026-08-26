@@ -4,8 +4,6 @@
 
 Report vulnerabilities privately with [GitHub Private Vulnerability Reporting](https://github.com/function1st/PhoneZero/security/advisories/new). That is a security channel only — not product support. Do not open a public issue.
 
-Enable the feature on this repository if the form is not yet available: **Settings → Code security → Private vulnerability reporting**.
-
 Include the affected version, a repro that uses only fixture numbers, and impact. Do not send secrets or live call recordings.
 
 ## Key handling

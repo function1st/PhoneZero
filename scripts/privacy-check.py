@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject non-fixture phone numbers and personal commit-author emails."""
+"""Reject non-fixture phones, mailbox addresses in files, and personal commit authors."""
 
 from __future__ import annotations
 
@@ -32,6 +32,15 @@ ALLOWED_AUTHOR_EMAIL_RES = (
     re.compile(r"^[^@\s]+@noreply\.github\.com$", re.IGNORECASE),
     re.compile(r"^cursoragent@cursor\.com$", re.IGNORECASE),
 )
+
+# File-content mailboxes: same plus RFC 2606 reserved example domains.
+ALLOWED_FILE_EMAIL_RES = ALLOWED_AUTHOR_EMAIL_RES + (
+    re.compile(r"^[^@\s]+@example\.(?:com|org|net)$", re.IGNORECASE),
+)
+
+# mailbox form (local-part + at-sign + host + dot-TLD). Skips npm scopes,
+# actions/checkout@v6, and sip:{DID}@host.
+EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
 
 
 def load_allowlist(path: Path) -> tuple[set[str], list[re.Pattern[str]]]:
@@ -86,6 +95,26 @@ def scan_phones(root: Path, exact: set[str], patterns: list[re.Pattern[str]]) ->
 
 def author_allowed(email: str) -> bool:
     return any(pattern.fullmatch(email) for pattern in ALLOWED_AUTHOR_EMAIL_RES)
+
+
+def file_email_allowed(email: str) -> bool:
+    return any(pattern.fullmatch(email) for pattern in ALLOWED_FILE_EMAIL_RES)
+
+
+def scan_emails(root: Path) -> list[str]:
+    flagged: list[str] = []
+    for path in iter_text_files(root):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        rel = path.relative_to(root)
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            for match in EMAIL_RE.finditer(line):
+                token = match.group(0)
+                if not file_email_allowed(token):
+                    flagged.append(f"{rel}:{lineno}:{token}")
+    return flagged
 
 
 def collect_commit_emails(repo: Path, extra_args: list[str] | None = None) -> list[tuple[str, str]]:
@@ -195,6 +224,19 @@ def self_test() -> None:
         leftover = [row for row in scan_authors(git_repo) if row.endswith("@users.noreply.github.com")]
         if leftover:
             raise SystemExit(f"self-test: noreply author was flagged: {leftover}")
+
+        (root / "mail-ok.txt").write_text(
+            "noreply function1st@users.noreply.github.com fixture reporter@example.com\n",
+            encoding="utf-8",
+        )
+        mail_ok = scan_emails(root)
+        if mail_ok:
+            raise SystemExit(f"self-test: allowed file emails were flagged: {mail_ok}")
+        personal = "person@" + "gmail.com"
+        (root / "mail-bad.txt").write_text(f"contact {personal}\n", encoding="utf-8")
+        mail_bad = scan_emails(root)
+        if personal not in "".join(mail_bad):
+            raise SystemExit(f"self-test: expected personal file email reject, got {mail_bad}")
     print("privacy-check self-test ok")
 
 
@@ -203,6 +245,7 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--skip-authors", action="store_true")
     parser.add_argument("--skip-phones", action="store_true")
+    parser.add_argument("--skip-emails", action="store_true")
     args = parser.parse_args()
 
     if args.self_test:
@@ -219,6 +262,15 @@ def main() -> int:
             failed = True
         else:
             print("phone fixtures ok")
+
+    if not args.skip_emails:
+        flagged = scan_emails(ROOT)
+        if flagged:
+            print("Mailbox addresses in the tree are not allowed. Use a GitHub noreply or example.com.")
+            print("\n".join(flagged))
+            failed = True
+        else:
+            print("file emails ok")
 
     if not args.skip_authors:
         flagged = scan_authors(ROOT)

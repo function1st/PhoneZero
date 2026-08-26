@@ -75,6 +75,7 @@ jobs:
 
       # Generic E.164 plus separated US/NANP forms. Dates, semver, and $0.05
       # do not match. Only scripts/privacy-phone-allowlist.txt is permitted.
+      # File-content emails must be GitHub noreply or RFC 2606 example.* .
       # Commit authors must be a GitHub noreply (or cursoragent) identity.
       - name: Privacy guards
         run: |

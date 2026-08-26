@@ -1,11 +1,9 @@
-# Deletes Actions runs whose head commit is not on the default-branch history.
-# After a rewrite, that drops force-pushed-away SHAs from the Actions UI.
+# Manual-only. Deletes Actions runs whose head commit is not on this history.
+# Do not run on push — that would drop feature-branch and PR CI after a main merge.
 name: Purge unreachable Actions runs
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   actions: write

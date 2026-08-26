@@ -11,7 +11,7 @@
    git config user.email function1st@users.noreply.github.com
    ```
 5. Run `scripts/setup-check.sh` after any TeXML, SIP, or Builder change.
-6. CI must stay green: secret scan, `shellcheck` on `scripts/*.sh`, `node plugins/phonezero/scripts/xai-mcp.mjs --self-test`, `node plugins/phonezero/scripts/launch-xai-mcp.mjs --resolve-only`, `xmllint --noout` on `texml/*.xml` and `plugins/phonezero/texml/*.xml`, and `python3 scripts/privacy-check.py` (E.164 / US numbers + commit-author emails).
+6. CI must stay green: secret scan, `shellcheck` on `scripts/*.sh`, `node plugins/phonezero/scripts/xai-mcp.mjs --self-test`, `node plugins/phonezero/scripts/launch-xai-mcp.mjs --resolve-only`, `xmllint --noout` on `texml/*.xml` and `plugins/phonezero/texml/*.xml`, and `python3 scripts/privacy-check.py` (E.164 / US numbers, file-content emails, and commit-author emails).
 
 ## Regression suite
 
@@ -33,7 +33,7 @@ Bump `version` in `plugins/phonezero/.cursor-plugin/plugin.json`, `.cursor-plugi
 
 ## Fixtures
 
-**No real phone numbers and no real transcripts, ever.** Fixtures are listed in [`scripts/privacy-phone-allowlist.txt`](scripts/privacy-phone-allowlist.txt) (today the reserved `+15555550100`–`+15555550199` / `555-01xx` block). Transcripts are synthetic. CI rejects other E.164 numbers and personal commit-author emails.
+**No real phone numbers and no real transcripts, ever.** Fixtures are listed in [`scripts/privacy-phone-allowlist.txt`](scripts/privacy-phone-allowlist.txt) (today the reserved `+15555550100`–`+15555550199` / `555-01xx` block). Transcripts are synthetic. CI rejects other E.164 numbers, mailbox addresses in the tree (GitHub noreply and `example.com` / `example.org` / `example.net` only), and personal commit-author emails.
 
 ## Secret-scanning gate
 
