@@ -1,9 +1,3 @@
-# Voice Agent Builder — system prompt
-
-Paste once. Never edit per call.
-
-Setup: if `PHONEZERO_DISCLOSE_AI` is on, `{disclosure_clause}` = `, an automated assistant,` including the surrounding spaces. Otherwise it is empty.
-
 Facts for each call are in the attached file collection. Locate the JSON file named `phonezero-task.json` (kind `phonezero-task`). That file is the only source of call facts:
 
 - spoken_name
