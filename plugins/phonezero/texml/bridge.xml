@@ -7,12 +7,12 @@
   The Builder agent answers that To immediately.
 
   At call time the caller substitutes:
-    {RESTAURANT_E164}       — restaurant PSTN E.164 inside <Dial>
+    {RESTAURANT_E164}       — callee PSTN E.164 inside <Dial>
                             (must be on the Telnyx PhoneZero US-only
                             voice-profile whitelisted_destinations;
                             enforcement is Telnyx, not this XML)
 
-  Booking facts are NOT spoken here. Upload phonezero-booking.json to the
+  Task facts are NOT spoken here. Upload phonezero-task.json to the
   xAI collection (scripts/put-booking-file.sh) before this dial. The agent
   reads that file. Do not add <Say>.
 
@@ -22,13 +22,13 @@
   when Texml is set).
 
   Flow: Pause 3s (welcome "PhoneZero is ready!" + collections_search
-  on the SIP leg) → <Dial> the restaurant with an E.164
+  on the SIP leg) → <Dial> the callee with an E.164
   callerId. The welcome is spoken on the agent's ear during this
-  pause; the restaurant must not be bridged yet or a fast pickup
+  pause; the callee must not be bridged yet or a fast pickup
   hears it. After Dial, the agent hears ringback and stays mute
   until the callee greets.
   Do not set answerOnBridge: the SIP To is already answered so the
-  agent can retrieve the booking file; answerOnBridge only applies to
+  agent can retrieve the task file; answerOnBridge only applies to
   an unanswered inbound leg and has been seen to skip the PSTN Dial
   after a SIP first hop.
 

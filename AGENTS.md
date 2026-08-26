@@ -1,6 +1,6 @@
 # PhoneZero — agent bootstrap
 
-PhoneZero books a restaurant table by phone (Telnyx hosted MCP + xAI Voice Agent) with zero user infrastructure.
+PhoneZero is a phone-skills platform (Telnyx hosted MCP + xAI Voice Agent) with zero user infrastructure. Restaurant booking is the first skill.
 
 If the user pointed you at `https://github.com/function1st/PhoneZero` or said **set this up** / **set up phone calling** / `/setup-phone-calling`: identify the host, then run **only** that host’s section. Do not mix them.
 
@@ -15,7 +15,7 @@ If the user pointed you at `https://github.com/function1st/PhoneZero` or said **
 
 You are a **computer-use** agent. Drive the UI yourself. Do these steps **in order**. Do not treat missing package names as missing APIs. Do not hunt the Telnyx catalog for `whoami` or `/v2/whoami` — they are not MCP tools.
 
-[README.md](README.md) has the same playbook at the top. Booking rules after the ids are in session: [`plugins/phonezero/skills/phonezero/SKILL.md`](plugins/phonezero/skills/phonezero/SKILL.md) §§2–12.
+[README.md](README.md) has the same playbook at the top. After the ids are in session: [`plugins/phonezero/skills/phonezero-runtime/SKILL.md`](plugins/phonezero/skills/phonezero-runtime/SKILL.md) (dial + Grok ad-hoc interview) and the matching phone skill ([`book-restaurant`](plugins/phonezero/skills/book-restaurant/SKILL.md) or [`confirm-business-hours`](plugins/phonezero/skills/confirm-business-hours/SKILL.md)). How-to: [`docs/SKILLS.md`](docs/SKILLS.md).
 
 **Do not** Customize → **+ Add** this repo as a Cursor plugin. Cursor **PhoneZero** (`plugins/phonezero`) is stdio Telnyx → on Grok the key never arrives → Telnyx **10009**.
 
@@ -34,8 +34,8 @@ Do **not** silently keep defaults. “Set this up” is not consent to these. Sh
 ```
 Call settings (defaults — change any now)
 
-1. Spoken name the restaurant hears: PhoneZero
-   “Hello, this is {name}…” — keep PhoneZero, or set your name / an alias.
+1. Spoken name the callee hears: PhoneZero
+ “Hello, this is {name}…” — keep PhoneZero, or set your name / an alias.
 
 2. AI disclaimer in the opener: ON
    ON  → “…{name}, an automated assistant, calling on a recorded line…”
@@ -73,7 +73,7 @@ Call `list_api_endpoints`. Real endpoint list → **5**. `401` / **10009** / con
 
 Prefer the PhoneZero xAI MCP (8 tools). “No Grok xAI *package*” does **not** mean you cannot upload. Hosts are always `api.x.ai`.
 
-- If `put_booking` is already listed → skip adding a connector.
+- If `put_task` or `put_booking` is already listed → skip adding a connector.
 - Else Customize → MCPs → **stdio** (not HTTP) name `xai`. Copy the `xai` block from [`plugins/phonezero/mcp.json`](plugins/phonezero/mcp.json) (same launcher is in [`plugins/phonezero-grok/.mcp.json`](plugins/phonezero-grok/.mcp.json)). Bind **real** values from secure fields: `XAI_API_KEY` or `PHONEZERO_CFG_XAI_API_KEY`, `PHONEZERO_FROM_NUMBER` or `PHONEZERO_CFG_FROM_NUMBER`, plus name / disclose from **1**. Do **not** leave literal `${…}` in env.
 
 Prove: `get_call_config` (`xai_key_wired`, `from_wired`, From last-4) then `ensure_collection` (name `PhoneZero bookings`).
@@ -122,22 +122,22 @@ xAI: `list_phone_numbers` → `register_byo_number` if the DID is not `byo_trunk
 
 ### 8. Calls
 
-You already have SID, TeXML id, From, spoken name, disclose, and the Telnyx destination list. Read skill §§2–12 (plan-first, two attempts, `booked` only with a host confirmation in the transcript). Owner setup-test to **their own confirmed number** may skip the hours guard — restaurants may not. The call plan must show Spoken as and only dial countries on that Telnyx whitelist. Per-call they may still override the spoken name.
+You already have SID, TeXML id, From, spoken name, disclose, and the Telnyx destination list. Read `phonezero-runtime` (plan-first, two attempts, `succeeded` / `booked` only with a live-person confirmation in the transcript). Match a shipped skill, or **interview into a `phonezero-task`** — do not ask them to paste a `SKILL.md` or write `~/.cursor/skills`. Owner setup-test to **their own confirmed number** may skip the hours guard — restaurants may not. The call plan must show Spoken as and only dial countries on that Telnyx whitelist. Per-call they may still override the spoken name. If they ask to save the shape as a template, pick memory or `put_template` and say where it went.
 
 On explicit yes, in this order — do not resolve SID again:
 
-1. `put_booking` — wait until processed
-2. `invoke_api_endpoint` `calls_accounts_texml_calls` (skill Dial JSON; `account_sid` + `ApplicationSid` from session)
+1. `put_task` (or `put_booking` alias) — wait until processed
+2. `invoke_api_endpoint` `calls_accounts_texml_calls` (runtime Dial JSON; `account_sid` + `ApplicationSid` from session)
 3. Poll `retrieve_calls_accounts_texml_calls`
 4. `retrieve_recordings_json_calls_accounts_texml_recordings_json` (not the write-named twin)
 5. `transcribe` — do not paste the audio URL
-6. Classify, then `delete_booking`. Keep the Telnyx recording.
+6. Classify, then `delete_booking` (live brief only). Keep the Telnyx recording.
 
 ---
 
 ## Cursor IDE — set this up
 
-1. Read [`plugins/phonezero/skills/phonezero/SKILL.md`](plugins/phonezero/skills/phonezero/SKILL.md) in full. Installed plugin: `skills/phonezero/SKILL.md`. Commands: `/setup-phone-calling`, `/book-table`.
+1. Read [`plugins/phonezero/skills/phonezero-runtime/SKILL.md`](plugins/phonezero/skills/phonezero-runtime/SKILL.md) and [`plugins/phonezero/skills/book-restaurant/SKILL.md`](plugins/phonezero/skills/book-restaurant/SKILL.md) in full. Commands: `/setup-phone-calling`, `/book-table`, `/book-restaurant`, `/confirm-business-hours`. Local skills: [`docs/SKILLS.md`](docs/SKILLS.md).
 2. Install the **Cursor** package only: [`.cursor-plugin/marketplace.json`](.cursor-plugin/marketplace.json) → [`plugins/phonezero/`](plugins/phonezero/). Channels: Customize → **+ Add** this repo root; Cursor Marketplace; copy `plugins/phonezero/` to `~/.cursor/plugins/local/phonezero`; or Team Marketplace import. Telnyx is stdio `npx @telnyx/mcp` + Configure `TELNYX_API_KEY`. Do **not** add hosted-HTTP Telnyx in this package (SSE GET 404 tombstone).
 3. Configure card: `TELNYX_API_KEY`, `PHONEZERO_FROM_NUMBER`, `XAI_API_KEY` (ZDR **off**). Name / disclose have defaults. Destinations are the Telnyx voice-profile whitelist, not this card. Do not put account SID, TeXML id, or collection id on the card. New conversation after install. Verify with `list_api_endpoints` and `get_call_config`.
 4. Then run the skill Setup (Telnyx MCP + xAI MCP + Builder once). Session SID is MCP `list_billing_groups` → `organization_id` (not a `whoami` tool).
@@ -149,5 +149,5 @@ Human walkthrough: [`docs/SETUP.md`](docs/SETUP.md). `scripts/provision.sh` is d
 ## Both hosts
 
 - Never commit or echo keys. Configure / Edit Values / MCP headers only — not the agent shell.
-- Builder prompt is static. Brief each call with `phonezero-booking.json` in the xAI collection — no TeXML `<Say>`, no per-call Builder edit.
+- Builder prompt is static. Brief each call with `phonezero-task.json` in the xAI collection — no TeXML `<Say>`, no per-call Builder edit. Re-paste `prompts/voice-agent.md` if the agent still searches `phonezero-booking.json`.
 - An old chat missing new MCP tools is not a failure — new conversation after install.

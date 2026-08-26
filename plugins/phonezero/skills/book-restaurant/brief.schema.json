@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "book-restaurant task brief",
+  "type": "object",
+  "required": [
+    "kind",
+    "skill",
+    "spoken_name",
+    "callee",
+    "callback",
+    "goal",
+    "opener",
+    "constraints",
+    "success",
+    "voicemail",
+    "playbook",
+    "facts"
+  ],
+  "properties": {
+    "kind": { "const": "phonezero-task" },
+    "skill": { "const": "book-restaurant" },
+    "spoken_name": { "type": "string" },
+    "disclose_ai": { "type": "boolean" },
+    "callee": {
+      "type": "object",
+      "required": ["name", "phone"],
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string", "description": "E.164" }
+      }
+    },
+    "callback": { "type": "string" },
+    "goal": { "type": "string" },
+    "opener": { "type": "string" },
+    "constraints": { "type": "array", "items": { "type": "string" } },
+    "success": { "type": "string" },
+    "voicemail": { "type": "string" },
+    "playbook": { "type": "string" },
+    "facts": {
+      "type": "object",
+      "required": [
+        "party",
+        "date",
+        "preferred_time",
+        "window",
+        "alternates",
+        "booking_name"
+      ],
+      "properties": {
+        "party": { "type": "integer", "minimum": 1 },
+        "date": { "type": "string" },
+        "preferred_time": { "type": "string" },
+        "window": { "type": "string" },
+        "alternates": { "type": "array", "items": { "type": "string" } },
+        "booking_name": { "type": "string" },
+        "special_requests": { "type": "string" }
+      }
+    }
+  }
+}

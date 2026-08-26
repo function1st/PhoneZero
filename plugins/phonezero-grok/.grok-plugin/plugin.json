@@ -1,8 +1,8 @@
 {
   "name": "phonezero-grok",
   "displayName": "PhoneZero (Grok)",
-  "version": "0.3.20",
-  "description": "Grok Bot: Telnyx hosted HTTP + PhoneZero xAI stdio. Edit Values for keys. Do not click Authenticate on Telnyx.",
+  "version": "0.4.0",
+  "description": "Grok Bot: phone skills (restaurant first). Telnyx hosted HTTP + PhoneZero xAI stdio. Edit Values for keys. Do not click Authenticate on Telnyx.",
   "author": {
     "name": "Function1st"
   },
@@ -36,7 +36,7 @@
       },
       "PHONEZERO_AGENT_NAME": {
         "type": "string",
-        "title": "Spoken name the restaurant hears",
+        "title": "Spoken name the callee hears",
         "description": "Opener: “Hello, this is {name}…”. Default PhoneZero. Change this if you want a different call identity.",
         "default": "PhoneZero"
       },

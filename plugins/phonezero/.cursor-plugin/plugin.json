@@ -1,8 +1,8 @@
 {
   "name": "phonezero",
   "displayName": "PhoneZero",
-  "version": "0.3.20",
-  "description": "Book a restaurant by phone. Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder. Then /setup-phone-calling.",
+  "version": "0.4.0",
+  "description": "Phone skills for voice tasks (restaurant booking first). Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder. Then /setup-phone-calling.",
   "author": {
     "name": "Function1st"
   },
@@ -18,9 +18,10 @@
     "grok-bot",
     "reservations",
     "calling",
-    "mcp"
+    "mcp",
+    "skills"
   ],
-  "skills": "./skills/phonezero",
+  "skills": "./skills/",
   "mcpServers": "./mcp.json",
   "commands": "./commands",
   "variables": {
@@ -44,7 +45,7 @@
       "PHONEZERO_AGENT_NAME": {
         "type": "string",
         "title": "Voice agent name",
-        "description": "Default spoken_name in phonezero-booking.json. Not baked into the Builder prompt.",
+        "description": "Default spoken_name in phonezero-task.json. Not baked into the Builder prompt.",
         "default": "PhoneZero"
       },
       "PHONEZERO_DISCLOSE_AI": {

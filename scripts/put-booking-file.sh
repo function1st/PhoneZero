@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Developer tool for a personal machine that may hold keys. Never echo keys.
 #
-# Upload phonezero-booking.json to xAI Files, attach it to the PhoneZero
+# Upload phonezero-task.json to xAI Files, attach it to the PhoneZero
 # bookings collection, wait until DOCUMENT_STATUS_PROCESSED, print ids.
 #
 # Required env:
@@ -22,8 +22,8 @@ usage() {
   cat <<'EOF'
 Usage: put-booking-file.sh PATH.json
 
-Replace the collection document named phonezero-booking.json with PATH.json
-(must be an object with kind "phonezero-booking"). Waits until the document
+Replace the collection document named phonezero-task.json with PATH.json
+(kind phonezero-task, or legacy phonezero-booking). Waits until the document
 is processed. Prints COLLECTION_ID and FILE_ID. Never prints API keys.
 
 Required environment:
@@ -64,23 +64,77 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 2
 fi
 
+WRAP_TMP="$(mktemp)"
+trap 'rm -f "$WRAP_TMP"' EXIT
 python3 -c '
 import json, sys
 from pathlib import Path
-p = Path(sys.argv[1])
-data = json.loads(p.read_text(encoding="utf-8"))
-if not isinstance(data, dict) or data.get("kind") != "phonezero-booking":
-    sys.stderr.write("error: JSON must be an object with kind phonezero-booking\n")
+
+src = Path(sys.argv[1])
+dest = Path(sys.argv[2])
+data = json.loads(src.read_text(encoding="utf-8"))
+if not isinstance(data, dict) or data.get("kind") not in ("phonezero-task", "phonezero-booking"):
+    sys.stderr.write("error: JSON must be an object with kind phonezero-task or phonezero-booking\n")
     sys.exit(2)
-required = ("spoken_name", "restaurant", "party", "date", "preferred_time", "window", "alternates", "booking_name", "callback")
-missing = [k for k in required if k not in data or data[k] in (None, "")]
-if missing:
-    sys.stderr.write("error: booking JSON missing: " + ", ".join(missing) + "\n")
-    sys.exit(2)
-' "$JSON_PATH"
+
+def wrap_booking(booking):
+    required = ("spoken_name", "restaurant", "party", "date", "preferred_time", "window", "alternates", "booking_name", "callback")
+    missing = [k for k in required if k not in booking or booking[k] in (None, "")]
+    if missing:
+        sys.stderr.write("error: booking JSON missing: " + ", ".join(missing) + "\n")
+        sys.exit(2)
+    party = booking["party"]
+    date = booking["date"]
+    preferred = booking["preferred_time"]
+    name = booking["booking_name"]
+    window = booking["window"]
+    alts = booking["alternates"] if isinstance(booking.get("alternates"), list) else []
+    callee = booking.get("callee") if isinstance(booking.get("callee"), dict) else {}
+    phone = callee.get("phone") or booking.get("phone") or booking.get("restaurant_phone") or ""
+    spoken = booking["spoken_name"]
+    callback = booking["callback"]
+    return {
+        "kind": "phonezero-task",
+        "skill": "book-restaurant",
+        "spoken_name": spoken,
+        "disclose_ai": booking.get("disclose_ai") is not False,
+        "callee": {"name": booking["restaurant"], "phone": phone},
+        "callback": callback,
+        "goal": "Book the table within the window.",
+        "opener": f"I'\''d like to make a reservation for a party of {party} on {date} at {preferred}. Do you have availability?",
+        "constraints": [
+            "Accept only the preferred time, ranked alternates, or a host offer inside the window.",
+            "Never invent a time.",
+        ],
+        "success": "Live host confirms read-back of party, date, agreed time, and booking name.",
+        "voicemail": f"This is {spoken} calling for {name} about a reservation for {party} on {date} at {preferred}. Please call {callback}. Thank you.",
+        "playbook": "Ask preferred first; then alternates in order; then in-window host offers. Mention special requests only after a time is under discussion.",
+        "facts": {
+            "party": party,
+            "date": date,
+            "preferred_time": preferred,
+            "window": window,
+            "alternates": alts,
+            "booking_name": name,
+            "special_requests": booking.get("special_requests") or "none",
+        },
+    }
+
+if data.get("kind") == "phonezero-booking":
+    data = wrap_booking(data)
+else:
+    required = ("skill", "spoken_name", "callee", "callback", "goal", "opener", "constraints", "success", "voicemail", "playbook", "facts")
+    missing = [k for k in required if k not in data or data[k] in (None, "")]
+    if missing:
+        sys.stderr.write("error: task JSON missing: " + ", ".join(missing) + "\n")
+        sys.exit(2)
+dest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+' "$JSON_PATH" "$WRAP_TMP"
+JSON_PATH="$WRAP_TMP"
 
 COLLECTION_NAME="PhoneZero bookings"
-BOOKING_NAME="phonezero-booking.json"
+BOOKING_NAME="phonezero-task.json"
+LEGACY_BOOKING_NAME="phonezero-booking.json"
 API="https://api.x.ai/v1"
 
 auth_api=(-H "Authorization: Bearer ${XAI_API_KEY}")
@@ -138,7 +192,7 @@ for c in items:
     -H "Accept: application/json" \
     --data-binary "$(python3 -c 'import json,os; print(json.dumps({
   "collection_name": os.environ["COLLECTION_NAME"],
-  "collection_description": "Current PhoneZero reservation facts",
+  "collection_description": "Current PhoneZero call briefs and optional templates",
   "field_definitions": [{
     "key": "kind",
     "required": False,
@@ -236,7 +290,7 @@ attach_and_wait() {
   http_json POST "${API}/collections/${cid}/documents/${fid}" "${auth_api[@]}" \
     -H "Accept: application/json" \
     -H "Content-Type: application/json" \
-    --data-binary "$(CID="$cid" FID="$fid" python3 -c 'import json,os; print(json.dumps({"collection_id": os.environ["CID"], "file_id": os.environ["FID"], "fields": {"kind": "phonezero-booking"}}))')"
+    --data-binary "$(CID="$cid" FID="$fid" python3 -c 'import json,os; print(json.dumps({"collection_id": os.environ["CID"], "file_id": os.environ["FID"], "fields": {"kind": "phonezero-task"}}))')"
   if [ "$PHONEZERO_HTTP_CODE" != "200" ] && [ "$PHONEZERO_HTTP_CODE" != "201" ]; then
     echo "error: add document HTTP ${PHONEZERO_HTTP_CODE}" >&2
     exit 1
@@ -276,6 +330,8 @@ print(d.get("status") if d.get("status") is not None else "")
 export COLLECTION_NAME
 COLLECTION_ID="$(resolve_collection_id)"
 remove_existing_booking "$COLLECTION_ID"
+BOOKING_NAME="$LEGACY_BOOKING_NAME" remove_existing_booking "$COLLECTION_ID"
+BOOKING_NAME="phonezero-task.json"
 FILE_ID="$(upload_file)"
 attach_and_wait "$COLLECTION_ID" "$FILE_ID"
 printf 'COLLECTION_ID=%s\n' "$COLLECTION_ID"

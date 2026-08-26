@@ -4,14 +4,14 @@
     "name": "Function1st"
   },
   "metadata": {
-    "description": "Book a restaurant by phone. Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder.",
-    "version": "0.3.20"
+    "description": "Phone skills for voice tasks (restaurant booking first). Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder.",
+    "version": "0.4.0"
   },
   "plugins": [
     {
       "name": "phonezero",
       "source": "./plugins/phonezero",
-      "description": "Book a restaurant by phone. Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder. Then /setup-phone-calling.",
+      "description": "Phone skills for voice tasks (restaurant booking first). Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder. Then /setup-phone-calling.",
       "logo": "assets/logo.png"
     }
   ]

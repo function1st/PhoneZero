@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "confirm-business-hours task brief",
+  "type": "object",
+  "required": [
+    "kind",
+    "skill",
+    "spoken_name",
+    "callee",
+    "callback",
+    "goal",
+    "opener",
+    "constraints",
+    "success",
+    "voicemail",
+    "playbook",
+    "facts"
+  ],
+  "properties": {
+    "kind": { "const": "phonezero-task" },
+    "skill": { "const": "confirm-business-hours" },
+    "spoken_name": { "type": "string" },
+    "disclose_ai": { "type": "boolean" },
+    "callee": {
+      "type": "object",
+      "required": ["name", "phone"],
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" }
+      }
+    },
+    "callback": { "type": "string" },
+    "goal": { "type": "string" },
+    "opener": { "type": "string" },
+    "constraints": { "type": "array", "items": { "type": "string" } },
+    "success": { "type": "string" },
+    "voicemail": { "type": "string" },
+    "playbook": { "type": "string" },
+    "facts": {
+      "type": "object",
+      "properties": {
+        "expected_hours": { "type": "string" },
+        "focus": { "type": "string" }
+      }
+    }
+  }
+}
