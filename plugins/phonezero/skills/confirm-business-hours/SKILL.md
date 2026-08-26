@@ -16,7 +16,7 @@ Collect who to call and what we need confirmed. No OpenTable step. Hand off to [
 | Callback | E.164. Default to the user's phone; confirm it. |
 | Expected hours (optional) | What we think the hours are, or a specific question (“open Saturday?”, “today’s holiday hours?”). |
 
-Spoken name defaults to PhoneZero; override per call. Fail closed if there is no business or no number after one clarifying turn.
+Spoken name: Cursor defaults PhoneZero; **Grok always asks** unless they said to always use one. Fail closed if there is no business or no number after one clarifying turn.
 
 ## Call plan
 

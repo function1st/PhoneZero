@@ -1,7 +1,7 @@
 {
   "name": "phonezero-grok",
   "displayName": "PhoneZero (Grok)",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Grok Bot: phone skills (restaurant first). Telnyx hosted HTTP + PhoneZero xAI stdio. Edit Values for keys. Do not click Authenticate on Telnyx.",
   "author": {
     "name": "Function1st"

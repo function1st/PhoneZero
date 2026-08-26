@@ -8,7 +8,7 @@ description: Grok Bot PhoneZero setup when pointed at https://github.com/functio
 Computer-use. Drive the UI. Do these steps **in order**. Same playbook: repo-root [README.md](../../../../README.md) and [AGENTS.md](../../../../AGENTS.md). After ids are in session: [plugins/phonezero/skills/phonezero-runtime/SKILL.md](../../../phonezero/skills/phonezero-runtime/SKILL.md) and the matching phone skill (or interview a custom `phonezero-task` — do not ask for a `SKILL.md` paste).
 
 1. **Not** Cursor + Add. **Not** Authenticate. **Not** keys in chat. **Not** `source ~/.phonezero/env`. **Not** `scripts/provision.sh`.
-2. Vendor gate, then **ask in chat and wait** — spoken name and AI disclaimer ON/OFF only. Do **not** ask for destination countries.
+2. Vendor gate, then **ask in chat and wait** — Agent Name (required; do not silently use PhoneZero) and whether to always use that name, plus AI disclaimer ON/OFF. Do **not** ask for destination countries. Before every later call, ask the name again unless they said to always use one.
 3. HTTP MCP: `https://api.telnyx.com/v2/mcp` + `Authorization: Bearer` in the form. Edit Values: keys + From only. Name / disclose stay in chat.
 4. `list_api_endpoints` — real list or stop. “6 tools” proves nothing. There is **no** MCP tool named `whoami`.
 5. If `put_task` / `put_booking` is missing: add stdio `xai` from [`plugins/phonezero/mcp.json`](../../../phonezero/mcp.json) with **real** env (not `${…}`). Then `get_call_config` + `ensure_collection`. If they said xAI is already set up, do not open the Builder. Ignore the wizard number. If they turned disclaimer OFF and Builder already exists, or the agent still searches `phonezero-booking.json`, re-paste `prompts/voice-agent.md` and `prompts/end_call.md` once.

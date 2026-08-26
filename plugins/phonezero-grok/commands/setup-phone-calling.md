@@ -7,9 +7,10 @@ description: Grok Bot — ask name / AI disclaimer, then wire Telnyx HTTP + xAI 
 
 You are a computer-use agent. Run **Grok Bot — set this up** in repo-root `AGENTS.md` (same steps in `README.md`) **in order**. Do not install Cursor PhoneZero. Do not click Authenticate. Do not take keys in chat.
 
-After the vendor gate, **ask in chat and wait** before wiring. Do not silently keep defaults:
+After the vendor gate, **ask in chat and wait** before wiring. **Always ask** the Agent Name (spoken name). Do not silently use PhoneZero.
 
-- Spoken name (default PhoneZero) — what the callee hears
+- Spoken name (required) — what the callee hears. PhoneZero is an example they may pick, not a default you apply without a reply.
+- Always use that name on later calls? If yes, remember it and do not re-ask. If no, ask again before every call.
 - AI disclaimer ON or OFF — they may turn it OFF
 
 **Do not ask for destination countries.** Read them from Telnyx after the HTTP MCP is proven: the outbound voice profile **attached to the PhoneZero TeXML app** (any name) → `whitelisted_destinations`. `list_outbound_voice_profiles` with **no name filter**; pick the id on that TeXML app. Show the actual name + codes. That setting is Telnyx Mission Control → Voice → Outbound voice profiles. PATCH only if they ask to add or remove countries. Do not give legal advice.
