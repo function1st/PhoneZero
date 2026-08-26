@@ -13,7 +13,7 @@ Destinations must be in the Telnyx outbound voice profile **PhoneZero US-only** 
 
 **Bootstrap from repo.** `AGENTS.md` at the repo root is the hook. **Grok Bot** (pointed at `https://github.com/function1st/PhoneZero` or “set this up”): execute **Grok Bot — set this up** in `AGENTS.md` first — do not + Add the Cursor plugin. **Cursor IDE:** this file’s Setup, after the Cursor package is installed. After install or update, start a **new** conversation.
 
-**Builder prompt is static.** Paste [`prompts/voice-agent.md`](../../prompts/voice-agent.md) once. `{disclosure_clause}` is the only setup substitution. Brief each call with `phonezero-task.json`. Never edit the Builder per call. Existing agents that still search `phonezero-booking.json` must be **re-pasted** (interpreter prompt + generic `end_call` description) before custom skills will speak correctly. If testers share a production DID, say so before they paste.
+**Builder prompt is static.** Paste [`prompts/voice-agent.md`](../../prompts/voice-agent.md) as the system prompt (`{disclosure_clause}` is the only substitution). Paste [`prompts/end_call.md`](../../prompts/end_call.md) as the `end_call` tool description. Brief each call with `phonezero-task.json`. Never edit the Builder per call. Existing agents that still search `phonezero-booking.json` must be **re-pasted** (both files) before custom skills will speak correctly. If testers share a production DID, say so before they paste.
 
 ## 1. Preconditions
 
@@ -76,11 +76,11 @@ If any of those are missing, **stop**.
    - Create one agent. Paste the **body** of `prompts/voice-agent.md` (it is the system prompt — no human preamble). Substitute `{disclosure_clause}` once: `, an automated assistant,` if `PHONEZERO_DISCLOSE_AI` is true, else empty. Do not substitute a spoken name. Save. Never add a per-call TASK BRIEF. Never edit the Builder prompt per call.
    - **Welcome: on**, text exactly `PhoneZero is ready!` **Caller can interrupt: on.** That line is the session-start cue so the agent runs `collections_search` for `phonezero-task.json` during the TeXML pause, before the callee greets. Empty welcome delays the search until the callee speaks. Do not put task facts in the welcome.
    - **Knowledge / file search:** attach `PhoneZero bookings`. Without this the agent invents the ask.
-   - **`end_call` tool: on.** Name exactly `end_call`. Description exactly: `ONLY use this tool after the call goal is met or you have confirmed it cannot be met within the briefed constraints. Be sure to verbally exchange goodbyes so you don't abruptly end the call.` The pasted prompt already uses this tool after a spoken goodbye. Do not leave hang-up off.
+   - **`end_call` tool: on.** Name exactly `end_call`. Description = the full contents of [`prompts/end_call.md`](../../prompts/end_call.md) (no extra words). The system prompt uses this tool after a spoken goodbye. Do not leave hang-up off.
    - **Max duration:** at least 10 minutes if the console exposes it.
    - Guardrails if shown: stay inside `constraints`, verbatim read-back of `success`, no invented confirmation.
    - The wizard mints a **free xAI number — ignore it.** PhoneZero always bridges to `PHONEZERO_FROM_NUMBER`. Copy the `agentId`.
-   - **Re-paste** this interpreter prompt (and the generic `end_call` description) if the agent was created with the old reservation-only prompt. Toggling Configure does not update a baked prompt. If this DID is also used in production, say so before pasting.
+   - **Re-paste** [`prompts/voice-agent.md`](../../prompts/voice-agent.md) and [`prompts/end_call.md`](../../prompts/end_call.md) if the agent was created with the old reservation-only prompt. Toggling Configure does not update a baked prompt. If this DID is also used in production, say so before pasting.
 8. Attach the agent to the **registered Telnyx DID**, never the wizard's number. xAI MCP `list_phone_numbers` → find YOUR DID (`origin` `byo_trunk`) → `attach_agent` with that `phone_number_id` and the Builder `agentId`. The `agentId` is visible on the wizard's number row — copy it from there, then attach it onto the DID.
 9. Keep `TELNYX_ACCOUNT_SID`, the TeXML app id, and the collection id in this session. Confirm last-4 of the From number in chat. **Do not** ask the user to paste those ids into Plugins → Configure. Do not invent SIDs.
 

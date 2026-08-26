@@ -149,5 +149,5 @@ Human walkthrough: [`docs/SETUP.md`](docs/SETUP.md). `scripts/provision.sh` is d
 ## Both hosts
 
 - Never commit or echo keys. Configure / Edit Values / MCP headers only — not the agent shell.
-- Builder prompt is static. Brief each call with `phonezero-task.json` in the xAI collection — no TeXML `<Say>`, no per-call Builder edit. Re-paste `prompts/voice-agent.md` if the agent still searches `phonezero-booking.json`.
+- Builder prompt is static. Brief each call with `phonezero-task.json` in the xAI collection — no TeXML `<Say>`, no per-call Builder edit. Re-paste `prompts/voice-agent.md` and `prompts/end_call.md` if the agent still searches `phonezero-booking.json`.
 - An old chat missing new MCP tools is not a failure — new conversation after install.

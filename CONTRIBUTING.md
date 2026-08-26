@@ -11,7 +11,7 @@
    git config user.email function1st@users.noreply.github.com
    ```
 5. Run `scripts/setup-check.sh` after any TeXML, SIP, or Builder change.
-6. CI must stay green: secret scan, `shellcheck` on `scripts/*.sh`, `node plugins/phonezero/scripts/xai-mcp.mjs --self-test`, `node plugins/phonezero/scripts/launch-xai-mcp.mjs --resolve-only`, `xmllint --noout` on `texml/*.xml` and `plugins/phonezero/texml/*.xml`, and `python3 scripts/privacy-check.py` (E.164 / US numbers, file-content emails, and commit-author emails).
+6. CI must stay green: secret scan, `shellcheck` on `scripts/*.sh`, `node plugins/phonezero/scripts/xai-mcp.mjs --self-test`, `node plugins/phonezero/scripts/launch-xai-mcp.mjs --resolve-only`, `end_call.md` verbatim in `voice-agent.md`, `xmllint --noout` on `texml/*.xml` and `plugins/phonezero/texml/*.xml`, and `python3 scripts/privacy-check.py` (E.164 / US numbers, file-content emails, and commit-author emails).
 
 ## Regression suite
 

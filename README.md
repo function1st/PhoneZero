@@ -67,7 +67,7 @@ Not stdio, not `npx`. If Grok-native **phonezero-grok** exists: install it, **Ed
 
 ### 5. Add the PhoneZero xAI MCP
 
-If `put_task` or `put_booking` is already listed, skip. Else Customize → MCPs → **stdio** `xai`: copy `xai` from [`plugins/phonezero/mcp.json`](plugins/phonezero/mcp.json). Real secrets in env, not `${…}`, plus name / disclose from **1**. Prove: `get_call_config` + `ensure_collection` (`PhoneZero bookings`). If they said xAI is already set up: do **not** open the Builder. Ignore the wizard xAI number. Existing Builder agents need a one-time re-paste of [`prompts/voice-agent.md`](plugins/phonezero/prompts/voice-agent.md) (interpreter + generic `end_call`) before custom skills will speak correctly.
+If `put_task` or `put_booking` is already listed, skip. Else Customize → MCPs → **stdio** `xai`: copy `xai` from [`plugins/phonezero/mcp.json`](plugins/phonezero/mcp.json). Real secrets in env, not `${…}`, plus name / disclose from **1**. Prove: `get_call_config` + `ensure_collection` (`PhoneZero bookings`). If they said xAI is already set up: do **not** open the Builder. Ignore the wizard xAI number. Existing Builder agents need a one-time re-paste of [`prompts/voice-agent.md`](plugins/phonezero/prompts/voice-agent.md) and [`prompts/end_call.md`](plugins/phonezero/prompts/end_call.md) before custom skills will speak correctly.
 
 Fallback only if stdio will not start: Bearer on `https://api.x.ai/v1` and `/v2` (`putBooking` in [`plugins/phonezero/scripts/xai-mcp.mjs`](plugins/phonezero/scripts/xai-mcp.mjs)). `403` + ZDR → stop.
 

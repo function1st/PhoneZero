@@ -49,10 +49,6 @@ If the ask matches a shipped skill (`book-restaurant`, `confirm-business-hours`)
 
 ## Builder
 
-Paste [`plugins/phonezero/prompts/voice-agent.md`](../plugins/phonezero/prompts/voice-agent.md) once. `end_call` description:
-
-```
-ONLY use this tool after the call goal is met or you have confirmed it cannot be met within the briefed constraints. Be sure to verbally exchange goodbyes so you don't abruptly end the call.
-```
+Paste [`plugins/phonezero/prompts/voice-agent.md`](../plugins/phonezero/prompts/voice-agent.md) as the system prompt. Paste [`plugins/phonezero/prompts/end_call.md`](../plugins/phonezero/prompts/end_call.md) as the `end_call` tool description.
 
 Existing reservation-only agents must be re-pasted before hours or ad-hoc briefs will speak correctly. Say so if the test DID is also used in production.

@@ -11,7 +11,7 @@ Computer-use. Drive the UI. Do these steps **in order**. Same playbook: repo-roo
 2. Vendor gate, then **ask in chat and wait** — spoken name and AI disclaimer ON/OFF only. Do **not** ask for destination countries.
 3. HTTP MCP: `https://api.telnyx.com/v2/mcp` + `Authorization: Bearer` in the form. Edit Values include name / disclose.
 4. `list_api_endpoints` — real list or stop. “6 tools” proves nothing. There is **no** MCP tool named `whoami`.
-5. If `put_task` / `put_booking` is missing: add stdio `xai` from [`plugins/phonezero/mcp.json`](../../../phonezero/mcp.json) with **real** env (not `${…}`), including name / disclose. Then `get_call_config` + `ensure_collection`. If they said xAI is already set up, do not open the Builder. Ignore the wizard number. If they turned disclaimer OFF and Builder already exists, or the agent still searches `phonezero-booking.json`, re-paste `prompts/voice-agent.md` once.
+5. If `put_task` / `put_booking` is missing: add stdio `xai` from [`plugins/phonezero/mcp.json`](../../../phonezero/mcp.json) with **real** env (not `${…}`), including name / disclose. Then `get_call_config` + `ensure_collection`. If they said xAI is already set up, do not open the Builder. Ignore the wizard number. If they turned disclaimer OFF and Builder already exists, or the agent still searches `phonezero-booking.json`, re-paste `prompts/voice-agent.md` and `prompts/end_call.md` once.
 6. Session ids **now**, before any plan:
    - `TELNYX_ACCOUNT_SID` = `invoke_api_endpoint` `list_billing_groups` args `{ "jq_filter": "[.data[].organization_id] | unique" }`
    - `PHONEZERO_TEXML_APP_ID` = `invoke_api_endpoint` `list_texml_applications` args `{ "filter": { "friendly_name": "PhoneZero" }, "jq_filter": ".data[] | {id, friendly_name}" }`

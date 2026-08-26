@@ -24,6 +24,6 @@ Then we fill the rest.
 
 If any of those are missing, **stop**. Do not call Telnyx or xAI.
 
-If they are in place: verify Telnyx MCP and the PhoneZero xAI MCP (`get_call_config`) with real `tools/call`s, then run the skill Setup (profile + TeXML app / attach DID / `register_byo_number` / `ensure_collection` → Builder once: paste `prompts/voice-agent.md`, welcome line, attach collection, `end_call` on with the **generic** tool description in the runtime skill, `attach_agent` onto the Telnyx DID — ignore the wizard number). Re-paste if the agent still has the old reservation-only prompt. A Files `403` mentioning Zero Data Retention means stop. Configure keys do not reach the agent shell — use the xAI MCP. **Do not** ask the user to paste ids back into Plugins → Configure.
+If they are in place: verify Telnyx MCP and the PhoneZero xAI MCP (`get_call_config`) with real `tools/call`s, then run the skill Setup (profile + TeXML app / attach DID / `register_byo_number` / `ensure_collection` → Builder once: paste `prompts/voice-agent.md` as the system prompt, `prompts/end_call.md` as the `end_call` description, welcome line, attach collection, `attach_agent` onto the Telnyx DID — ignore the wizard number). Re-paste both files if the agent still has the old reservation-only prompt. A Files `403` mentioning Zero Data Retention means stop. Configure keys do not reach the agent shell — use the xAI MCP. **Do not** ask the user to paste ids back into Plugins → Configure.
 
 Never `source ~/.phonezero/env`. Never echo keys. Scripts are developer-only.
