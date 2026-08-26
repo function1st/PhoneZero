@@ -1,7 +1,7 @@
 {
   "name": "phonezero",
   "displayName": "PhoneZero",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Phone skills for voice tasks (restaurant booking first). Need: Telnyx KYC + one US number, xAI team with ZDR off, API keys, Voice Agent Builder. Then /setup-phone-calling.",
   "author": {
     "name": "Function1st"

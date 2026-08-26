@@ -47,7 +47,7 @@ The Telnyx MCP cannot run until `TELNYX_API_KEY` is saved as a plugin variable.
 
 The Configure card must match [`plugins/phonezero/.cursor-plugin/plugin.json`](../plugins/phonezero/.cursor-plugin/plugin.json). Cursor injects those values into the plugin MCP processes only — **not** the agent shell. After save, start a **new** conversation and check Telnyx MCP plus the PhoneZero xAI MCP (`get_call_config`). Never `source ~/.phonezero/env` in chat. Never ask the agent to `curl` with `$XAI_API_KEY`.
 
-**Defaults.** Destinations are the Telnyx profile **PhoneZero US-only** (`whitelisted_destinations`, default `US` on create) — Mission Control → Voice → Outbound voice profiles. PhoneZero has no plugin field for this. AI disclosure defaults on. Calls are recorded. You are solely responsible for lawful use; see [DISCLAIMER.md](../DISCLAIMER.md).
+**Defaults.** Destinations are the Telnyx outbound voice profile **attached to the PhoneZero TeXML app** (`whitelisted_destinations`; default `US` only when a new profile is created). Name and country list are yours — Mission Control → Voice → Outbound voice profiles. PhoneZero has no plugin field for this. AI disclosure defaults on. Calls are recorded. You are solely responsible for lawful use; see [DISCLAIMER.md](../DISCLAIMER.md).
 
 To add a country (e.g. Japan): change that Telnyx whitelist in Mission Control, or ask the Bot to PATCH `whitelisted_destinations`. Telnyx rejects calls outside that list.
 
@@ -57,7 +57,7 @@ To add a country (e.g. Japan): change that Telnyx whitelist in Mission Control, 
 | `PHONEZERO_FROM_NUMBER` | plugin variable | A | Telnyx US DID (E.164): outbound caller ID and SIP bridge target (`sip:{PHONEZERO_FROM_NUMBER}@sip.voice.x.ai;transport=tls`). |
 | `XAI_API_KEY` | plugin variable (secret) | A | From a team with **ZDR off**. Injected into the PhoneZero xAI MCP only (Files, collections, STT, phone-numbers). Not in the agent shell. |
 | Spoken name / disclose | per-task (`phonezero-task.json`) | chat | `spoken_name` and `disclose_ai`. Default PhoneZero / true. Not on the Configure card. `{disclosure_clause}` is pasted once into the Builder prompt. |
-| Destinations | Telnyx voice profile **PhoneZero US-only** | Telnyx | `whitelisted_destinations`. Mission Control → Voice → Outbound voice profiles. Not a PhoneZero plugin variable. |
+| Destinations | Telnyx voice profile on the PhoneZero TeXML app | Telnyx | `whitelisted_destinations` of whatever profile is attached (`outbound.outbound_voice_profile_id`). Any name, any country list. Mission Control → Voice → Outbound voice profiles. Not a PhoneZero plugin variable. |
 | `TELNYX_ACCOUNT_SID` | resolved in session | B | TeXML REST account SID. MCP: `list_billing_groups` → `data[].organization_id` (no `whoami` tool). Developer curl: `GET /v2/whoami` → `data.organization_id`. Not on the Configure card. |
 | `PHONEZERO_TEXML_APP_ID` | resolved in session | B | TeXML application SID. Not on the Configure card. |
 | `PHONEZERO_XAI_COLLECTION_ID` | resolved in session | B | Collection for `phonezero-task.json` and optional `phonezero-template-*.json`. Find-or-create name `PhoneZero bookings`. |
@@ -68,7 +68,7 @@ Account, KYC, and the DID stay manual. Everything after that is API-automatable.
 
 12. **End-user path.** Run `/setup-phone-calling` (or ask *"Set up phone calling."*). The first message is a vendor checklist — stop if anything is missing (including ZDR off). Then the Bot uses the Telnyx hosted MCP (`list_api_endpoints` → `get_api_endpoint_schema` → `invoke_api_endpoint`) and `XAI_API_KEY` for xAI Files + phone-numbers. Approve each credentialed step. It will:
    - Resolve `TELNYX_ACCOUNT_SID` from Telnyx MCP `list_billing_groups` → `data[].organization_id` (developer curl: `GET /v2/whoami`).
-   - Find-or-create outbound voice profile **PhoneZero US-only**: `traffic_type=conversational`, `service_plan=global`, `usage_payment_method=rate-deck` (the only accepted combo today; error 10015 otherwise), `whitelisted_destinations` default `["US"]` on create, `daily_spend_limit="5.00"`, `daily_spend_limit_enabled=true`. If the profile exists, keep its current whitelist. PATCH only if the user asks to add or remove countries.
+   - Resolve the outbound voice profile **already attached** to the PhoneZero TeXML app (any name). If none: use the account’s only profile, or ask which of several to attach, or create one (create-default name `PhoneZero` unless they pick another; `traffic_type=conversational`, `service_plan=global`, `usage_payment_method=rate-deck` — the only accepted combo today; error 10015 otherwise; `whitelisted_destinations` default `["US"]` on create; `daily_spend_limit="5.00"`, `daily_spend_limit_enabled=true`). Keep an existing whitelist and name. PATCH only if the user asks to add or remove countries.
    - Find-or-create TeXML application **PhoneZero** with `voice_url` = [`texml/inbound.xml`](../texml/inbound.xml) (default raw URL: `https://raw.githubusercontent.com/function1st/PhoneZero/main/texml/inbound.xml`) and `voice_method=get`. **Verify that URL returns HTTP 200 before writing it.** That URL is fetched **only for inbound** calls to the DID. Outbound calls carry inline `Texml` (template [`plugins/phonezero/texml/bridge.xml`](../plugins/phonezero/texml/bridge.xml)).
    - Attach the DID: `PATCH /v2/phone_numbers/{phone_number_id}` `{"connection_id":"<texml_app_id>"}`.
    - Register the DID with xAI if it is not already registered: `POST https://api.x.ai/v2/phone-numbers` `{"name":"PhoneZero","phoneNumber":"+1…","origin":"byo_trunk"}`.
@@ -79,6 +79,7 @@ Account, KYC, and the DID stay manual. Everything after that is API-automatable.
     - `XAI_API_KEY` — register the DID with xAI. The SIP bridge target is `PHONEZERO_FROM_NUMBER`.
     - `PHONEZERO_XAI_AGENT_ID` — attach a Builder agent (step 15) via the fieldMask PATCH.
     - `PHONEZERO_ALLOWED_COUNTRIES` — developer-only env. If set, writes that ISO list onto the Telnyx profile `whitelisted_destinations`. If unset, create uses `["US"]` and an existing profile is left as-is. Not a plugin variable.
+    - `PHONEZERO_PROFILE_NAME` — developer-only env. Pin a Telnyx outbound voice profile by name (find or create). If unset: use the profile already attached to the PhoneZero TeXML app, or the only profile on the account. Not a plugin variable.
 
 14. **Create the Voice Agent (once, in Builder).** There is no public create API (`/v1/agents` is not enabled). Preferred: the Bot opens [https://console.x.ai](https://console.x.ai) with your approved session. Fallback: you do this and give the Bot the `agentId`. On the **same ZDR-off team** as the API key:
 
@@ -107,7 +108,7 @@ Account, KYC, and the DID stay manual. Everything after that is API-automatable.
     - Telnyx auth works (a real `tools/call` succeeds);
     - `get_call_config` returns From last-4 (or Telnyx `list_phone_numbers` shows the DID);
     - a TeXML application named PhoneZero exists and the DID's `connection_id` matches it;
-    - Telnyx outbound voice profile **PhoneZero US-only** `whitelisted_destinations` is listed (change countries there, not on the Configure card);
+    - the outbound voice profile **attached to the PhoneZero TeXML app** is listed (`name` + `whitelisted_destinations`; change countries there, not on the Configure card);
     - xAI MCP `ensure_collection` finds **PhoneZero bookings** (403 + "Zero Data Retention" → wrong team);
     - xAI MCP `list_phone_numbers` shows the DID as `origin=byo_trunk` with an `agentId` (missing agent is a warning — finish step 14–15).
 20. **Optional developer path.** [`scripts/setup-check.sh`](../scripts/setup-check.sh) is developer-only. Run it on a **personal machine that is allowed to hold keys**, never on the Bot computer. It verifies Telnyx auth, that the number is on the account, that the TeXML application exists, and that the DID is attached to that app. If `XAI_API_KEY` is set, it also checks xAI BYO registration. It does **not** verify that the agent answers.

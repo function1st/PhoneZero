@@ -8,9 +8,10 @@
 
   At call time the caller substitutes:
     {RESTAURANT_E164}       — callee PSTN E.164 inside <Dial>
-                            (must be on the Telnyx PhoneZero US-only
-                            voice-profile whitelisted_destinations;
-                            enforcement is Telnyx, not this XML)
+                            (must be on the Telnyx outbound voice
+                            profile attached to the PhoneZero TeXML
+                            app — any name; enforcement is Telnyx,
+                            not this XML)
 
   Task facts are NOT spoken here. Upload phonezero-task.json to the
   xAI collection (scripts/put-booking-file.sh) before this dial. The agent

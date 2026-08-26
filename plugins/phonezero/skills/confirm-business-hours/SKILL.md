@@ -12,7 +12,7 @@ Collect who to call and what we need confirmed. No OpenTable step. Hand off to [
 | Field | Rules |
 |---|---|
 | Business name | As they will recognize it. |
-| Business phone | E.164. Look up if needed, show it, get confirmation. Country must be on the Telnyx **PhoneZero US-only** whitelist. |
+| Business phone | E.164. Look up if needed, show it, get confirmation. Country must be on the Telnyx profile attached to the PhoneZero TeXML app. |
 | Callback | E.164. Default to the user's phone; confirm it. |
 | Expected hours (optional) | What we think the hours are, or a specific question (“open Saturday?”, “today’s holiday hours?”). |
 
