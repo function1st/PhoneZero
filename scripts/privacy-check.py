@@ -146,17 +146,25 @@ def collect_commit_emails(repo: Path, extra_args: list[str] | None = None) -> li
     return found
 
 
-def _ref_exists(repo: Path, ref: str) -> bool:
+def _rev_parse(repo: Path, ref: str) -> str | None:
     probe = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "--verify", ref],
         capture_output=True,
         text=True,
     )
-    return probe.returncode == 0
+    if probe.returncode != 0:
+        return None
+    return (probe.stdout or "").strip() or None
 
 
 def _author_log_args(repo: Path) -> list[str] | None:
-    """Check only commits that are not already on the base branch."""
+    """Check only commits that are not already on the base branch.
+
+    Skip a candidate that is HEAD itself (a main push after fetching
+    origin/main would otherwise be an empty range). Empty range is a
+    pass, not a personal-email failure.
+    """
+    head = _rev_parse(repo, "HEAD")
     candidates: list[str] = []
     base = os.environ.get("GITHUB_BASE_REF", "").strip()
     if base:
@@ -165,25 +173,31 @@ def _author_log_args(repo: Path) -> list[str] | None:
     if before and set(before) != {"0"}:
         candidates.append(before)
     candidates.append("origin/main")
+    saw_head_ref = False
     for ref in candidates:
-        if _ref_exists(repo, ref):
-            return ["HEAD", "--not", ref]
+        sha = _rev_parse(repo, ref)
+        if not sha:
+            continue
+        if sha == head:
+            saw_head_ref = True
+            continue
+        return ["HEAD", "--not", ref]
     parents = subprocess.run(
         ["git", "-C", str(repo), "rev-list", "--parents", "-n", "1", "HEAD"],
         capture_output=True,
         text=True,
     )
     parts = (parents.stdout or "").split()
-    if parents.returncode == 0 and len(parts) >= 3:
+    if parents.returncode == 0 and len(parts) >= 3 and parts[1] != head:
         return ["HEAD", "--not", parts[1]]
+    if saw_head_ref:
+        return ["HEAD", "--not", "HEAD"]
     return None
 
 
 def scan_authors(repo: Path) -> list[str]:
     flagged: list[str] = []
     emails = collect_commit_emails(repo, _author_log_args(repo))
-    if not emails:
-        return ["no commits to check"]
     for sha, email in emails:
         if not author_allowed(email):
             flagged.append(f"{sha[:12]} {email}")
@@ -220,41 +234,54 @@ def self_test() -> None:
         _git(git_repo, "config", "commit.gpgsign", "false")
         (git_repo / "README").write_text("x\n", encoding="utf-8")
         _git(git_repo, "add", "README")
-        bad_env = {
-            "GIT_AUTHOR_NAME": "Person",
-            "GIT_AUTHOR_EMAIL": "person@" + "gmail.com",
-            "GIT_COMMITTER_NAME": "Person",
-            "GIT_COMMITTER_EMAIL": "person@" + "gmail.com",
-        }
-        _git(git_repo, "commit", "-m", "bad", extra_env=bad_env)
-        if not scan_authors(git_repo):
-            raise SystemExit("self-test: personal author email was allowed")
+        saved_ci = {k: os.environ.pop(k, None) for k in ("GITHUB_BASE_REF", "GITHUB_EVENT_BEFORE")}
+        try:
+            bad_env = {
+                "GIT_AUTHOR_NAME": "Person",
+                "GIT_AUTHOR_EMAIL": "person@" + "gmail.com",
+                "GIT_COMMITTER_NAME": "Person",
+                "GIT_COMMITTER_EMAIL": "person@" + "gmail.com",
+            }
+            _git(git_repo, "commit", "-m", "bad", extra_env=bad_env)
+            if not scan_authors(git_repo):
+                raise SystemExit("self-test: personal author email was allowed")
 
-        good_env = {
-            "GIT_AUTHOR_NAME": "Function1st",
-            "GIT_AUTHOR_EMAIL": "function1st@users.noreply.github.com",
-            "GIT_COMMITTER_NAME": "Function1st",
-            "GIT_COMMITTER_EMAIL": "function1st@users.noreply.github.com",
-        }
-        (git_repo / "README").write_text("y\n", encoding="utf-8")
-        _git(git_repo, "add", "README")
-        _git(git_repo, "commit", "-m", "good", extra_env=good_env)
-        leftover = [row for row in scan_authors(git_repo) if row.endswith("@users.noreply.github.com")]
-        if leftover:
-            raise SystemExit(f"self-test: noreply author was flagged: {leftover}")
+            good_env = {
+                "GIT_AUTHOR_NAME": "Function1st",
+                "GIT_AUTHOR_EMAIL": "function1st@users.noreply.github.com",
+                "GIT_COMMITTER_NAME": "Function1st",
+                "GIT_COMMITTER_EMAIL": "function1st@users.noreply.github.com",
+            }
+            (git_repo / "README").write_text("y\n", encoding="utf-8")
+            _git(git_repo, "add", "README")
+            _git(git_repo, "commit", "-m", "good", extra_env=good_env)
+            leftover = [row for row in scan_authors(git_repo) if row.endswith("@users.noreply.github.com")]
+            if leftover:
+                raise SystemExit(f"self-test: noreply author was flagged: {leftover}")
 
-        merge_env = {
-            "GIT_AUTHOR_NAME": "GitHub",
-            "GIT_AUTHOR_EMAIL": "noreply@github.com",
-            "GIT_COMMITTER_NAME": "GitHub",
-            "GIT_COMMITTER_EMAIL": "noreply@github.com",
-        }
-        (git_repo / "README").write_text("z\n", encoding="utf-8")
-        _git(git_repo, "add", "README")
-        _git(git_repo, "commit", "-m", "merge", extra_env=merge_env)
-        leftover = [row for row in scan_authors(git_repo) if "noreply@github.com" in row]
-        if leftover:
-            raise SystemExit(f"self-test: GitHub merge author was flagged: {leftover}")
+            merge_env = {
+                "GIT_AUTHOR_NAME": "GitHub",
+                "GIT_AUTHOR_EMAIL": "noreply@github.com",
+                "GIT_COMMITTER_NAME": "GitHub",
+                "GIT_COMMITTER_EMAIL": "noreply@github.com",
+            }
+            (git_repo / "README").write_text("z\n", encoding="utf-8")
+            _git(git_repo, "add", "README")
+            _git(git_repo, "commit", "-m", "merge", extra_env=merge_env)
+            leftover = [row for row in scan_authors(git_repo) if "noreply@github.com" in row]
+            if leftover:
+                raise SystemExit(f"self-test: GitHub merge author was flagged: {leftover}")
+
+            _git(git_repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+            leftover = scan_authors(git_repo)
+            if leftover:
+                raise SystemExit(f"self-test: empty range vs origin/main was flagged: {leftover}")
+        finally:
+            for key, value in saved_ci.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
         (root / "mail-ok.txt").write_text(
             "noreply function1st@users.noreply.github.com fixture reporter@example.com\n",

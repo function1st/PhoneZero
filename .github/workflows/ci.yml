@@ -92,6 +92,8 @@ jobs:
       # File-content emails must be GitHub noreply or RFC 2606 example.* .
       # Commit authors must be a GitHub noreply (or cursoragent) identity.
       - name: Privacy guards
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin "${GITHUB_BASE_REF:-main}:refs/remotes/origin/${GITHUB_BASE_REF:-main}" || true
