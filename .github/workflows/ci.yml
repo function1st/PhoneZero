@@ -62,6 +62,20 @@ jobs:
           node scripts/xai-mcp.mjs --self-test
           node plugins/phonezero/scripts/launch-xai-mcp.mjs --resolve-only
 
+      - name: Prompt paste files
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          desc = Path("plugins/phonezero/prompts/end_call.md").read_text(encoding="utf-8").strip()
+          voice = Path("plugins/phonezero/prompts/voice-agent.md").read_text(encoding="utf-8")
+          if not desc:
+              raise SystemExit("end_call.md is empty")
+          if desc not in voice:
+              raise SystemExit("end_call.md must appear verbatim in voice-agent.md")
+          print("end_call description in sync")
+          PY
+
       - name: TeXML well-formed
         run: |
           set -euo pipefail
@@ -80,5 +94,6 @@ jobs:
       - name: Privacy guards
         run: |
           set -euo pipefail
+          git fetch --no-tags origin "${GITHUB_BASE_REF:-main}:refs/remotes/origin/${GITHUB_BASE_REF:-main}" || true
           python3 scripts/privacy-check.py --self-test
           python3 scripts/privacy-check.py

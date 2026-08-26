@@ -1,20 +1,42 @@
-# PhoneZero persona eval (Phase 2)
+# PhoneZero persona eval
 
-Regression suite for `prompts/voice-agent.md`. A human plays the restaurant host (or voicemail/IVR). After any prompt change, run every scenario against the live Builder agent. Transcribe the Telnyx dual-channel recording with xAI STT (`POST /v1/stt`, `multichannel=true`). Assert the outcome state and that the STT transcript contains the expected recap (and host-channel confirmation when the state is `booked`).
+Regression suite for `prompts/voice-agent.md` plus first-party skills. A human plays the callee (or voicemail/IVR). After any prompt change, run restaurant scenarios 1–11 and the hours scripts at the bottom (or [`plugins/phonezero/skills/confirm-business-hours/personas.md`](../plugins/phonezero/skills/confirm-business-hours/personas.md)). Transcribe the Telnyx dual-channel recording with xAI STT (`POST /v1/stt`, `multichannel=true`). Assert the outcome state. The voice agent must **not** speak a `Confirming:` recap — classify from the transcript.
 
-Do not use real numbers. Fixtures only.
+Do not use real numbers. Fixtures only. Re-paste the interpreter prompt on the test Builder agent first.
 
-## Shared briefing (every scenario unless noted)
+## Shared briefing (restaurant scenarios unless noted)
 
-The Builder prompt is static. Each call's facts are spoken by Telnyx TTS (`<Say>`) before the restaurant is dialed. Use this spoken brief (do not edit the Builder prompt):
+The Builder prompt is static. Upload a `phonezero-task` (skill `book-restaurant`) before dial. Do not use TeXML `<Say>`. Do not edit the Builder prompt per call.
 
-```
-Task briefing for PhoneZero. This is an automated briefing, not a restaurant. Disclosure: include the automated-assistant clause in the opener. Restaurant: Joe's Pizza. Party of 2. Date: Friday, August 28. Preferred time: 7:00 PM. Window: 6:30 PM to 8:00 PM. Ranked alternates: 6:45 PM, 7:15 PM, 7:30 PM. Booking name: Alex Example. Callback: +15555550199. Special requests: none.
+```json
+{
+  "kind": "phonezero-task",
+  "skill": "book-restaurant",
+  "spoken_name": "PhoneZero",
+  "disclose_ai": true,
+  "callee": { "name": "Joe's Pizza", "phone": "+15555550100" },
+  "callback": "+15555550199",
+  "goal": "Book the table within the window.",
+  "opener": "I'd like to make a reservation for a party of 2 on Friday, August 28 at 7:00 PM. Do you have availability?",
+  "constraints": ["Accept only the preferred time, ranked alternates, or a host offer inside 6:30 PM to 8:00 PM.", "Never invent a time."],
+  "success": "Live host confirms read-back of party, date, agreed time, and booking name.",
+  "voicemail": "This is PhoneZero calling for Alex Example about a reservation for 2 on Friday, August 28 at 7:00 PM. Please call +15555550199. Thank you.",
+  "playbook": "Ask preferred first; then 6:45 PM, 7:15 PM, 7:30 PM; then in-window host offers.",
+  "facts": {
+    "party": 2,
+    "date": "Friday, August 28",
+    "preferred_time": "7:00 PM",
+    "window": "6:30 PM to 8:00 PM",
+    "alternates": ["6:45 PM", "7:15 PM", "7:30 PM"],
+    "booking_name": "Alex Example",
+    "special_requests": "none"
+  }
+}
 ```
 
 Callee fixture: `+15555550100`. Evaluator phone is this DID or a SIP stand-in labeled the same.
 
-`booked` is valid only when all six gates in SKILL.md §9 hold — recap says `booked`, a live host turn (not briefing TTS, not voicemail) confirms the read-back, the time is in-window, and the recording contains a complete briefing (restaurant, party, date, preferred time, window, booking name). Agent recap alone fails the scenario.
+`booked` is an alias of `succeeded`. It is valid only when runtime §8 and `book-restaurant` gates hold — a live host turn (not voicemail) confirms the read-back, the time is in-window. Agent recap alone fails the scenario. A spoken `Confirming:` line is a **fail** (the interpreter must not narrate).
 
 ---
 
@@ -192,13 +214,15 @@ Must not contain `Confirming: booked`.
 
 ## Scoring
 
-A scenario passes only if the outcome state matches and the xAI STT transcript contains the recap line exactly (punctuation and field order as written) when a recap is required. Apply this channel model:
+A scenario passes if the outcome state matches. Ignore legacy `Confirming:` lines in the scripts below as **agent speech that must not occur**. For `booked` / `succeeded`, the transcript must contain a live host confirmation of the read-back. Apply this channel model:
 
-- Identify the **agent** channel by the opener ONLY ("calling on a recorded line" / "I'd like to make a reservation"). NEVER identify it by a "restatement of the briefing" — that matches the Telnyx TTS.
-- The other channel may contain BOTH the briefing TTS and later host audio. It is not "not the host."
-- Briefing TTS = the turn that starts with the briefing preamble (`Task briefing for` / `This is an automated briefing, not a restaurant`). That turn is never a host confirmation.
-- Host confirmation = a later turn on the non-agent channel, after the opener, that accepts the time, has the party down, or answers yes to the read-back.
+- Identify the **agent** channel by the opener ONLY ("calling on a recorded line" / restaurant “I'd like to make a reservation” / hours opener). There is no Telnyx TTS briefing.
+- Host confirmation = a later turn on the non-agent channel, after the opener, that accepts the read-back (or states hours, for hours skills).
 - A mailbox greeting / beep / "leave a message" is never a host confirmation.
-- If `channels` is missing or the opener is not unique: outcome `unknown`, never `booked`.
+- If `channels` is missing or the opener is not unique: outcome `unknown`, never `booked` / `succeeded`.
 
-For `booked`, also highlight the host-channel confirmation turn in the eval notes (gates 5–6: confirming turn is a live human, not briefing TTS or voicemail; recording contains a complete briefing). Builder console audio is the tie-breaker when channel labels are messy; the skill still must not report `booked` without a host confirmation in the xAI STT transcript.
+Builder console audio is the tie-breaker when channel labels are messy; the skill still must not report `succeeded` without a live-person confirmation in the xAI STT transcript.
+
+## Hours skill (custom)
+
+See [`plugins/phonezero/skills/confirm-business-hours/personas.md`](../plugins/phonezero/skills/confirm-business-hours/personas.md). Run at least those three after a Builder re-paste. The agent must not say “I'd like to make a reservation”.

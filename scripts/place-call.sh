@@ -15,7 +15,7 @@
 #   https://developers.telnyx.com/api-reference/texml-rest-commands/initiate-an-outbound-call
 #
 # Reversed flow (verified Aug 2026): To is the xAI agent SIP URI; Texml
-# Pause+Dial(restaurant). Booking facts go in the xAI collection JSON
+# Pause+Dial(callee). Task facts go in the xAI collection JSON
 # (put-booking-file.sh), not Telnyx TTS. MachineDetection/AsyncAmd are
 # omitted (they would classify the agent To-leg).
 #
@@ -35,18 +35,18 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: place-call.sh [--dry-run] [--booking-json PATH] E.164_RESTAURANT
+Usage: place-call.sh [--dry-run] [--booking-json PATH] E.164_CALLEE
 
 Place a TeXML call: To = the xAI agent SIP URI; Texml pauses then
-dials the restaurant E.164. Booking facts must already be in the
-xAI collection as phonezero-booking.json (or pass --booking-json to
-upload first). Prints the Call SID.
+dials the callee E.164. Task facts must already be in the
+xAI collection as phonezero-task.json (or pass --booking-json to
+upload first). Prints the Call SID. E.164_RESTAURANT is accepted as an alias.
 
 Numbers must be E.164 (^\+[1-9][0-9]{6,14}$). PHONEZERO_FROM_NUMBER
-must also be US (+1 and 10 digits). Restaurant dest is E.164 only —
+must also be US (+1 and 10 digits). Dest is E.164 only —
 Telnyx voice-profile `whitelisted_destinations` is country enforcement.
 
-  --booking-json PATH  Upload this phonezero-booking JSON before dialing
+  --booking-json PATH  Upload this phonezero-task or phonezero-booking JSON before dialing
   --dry-run            Print the request (API key redacted) without sending it
 
 Required environment:
@@ -63,7 +63,7 @@ Optional / auto-resolved:
                                      xAI-provisioned number instead.
 
 Example (fixture number only):
-  place-call.sh --booking-json /tmp/phonezero-booking.json +15555550100
+  place-call.sh --booking-json /tmp/phonezero-task.json +15555550100
   place-call.sh --dry-run +15555550100
 EOF
 }
@@ -146,9 +146,9 @@ print(org.strip())
   echo "resolved TELNYX_ACCOUNT_SID via /v2/whoami (${TELNYX_ACCOUNT_SID:0:8}…)"
 }
 
-# Build inline Texml from texml/bridge.xml: substitute restaurant E.164,
-# strip comments and whitespace. No <Say> — booking facts are the
-# collection JSON. Fallback: proven shape.
+# Build inline Texml from plugins/phonezero/texml/bridge.xml: substitute
+# callee E.164, strip comments and whitespace. No <Say> — task facts are
+# the collection JSON. Fallback: proven shape.
 build_texml() {
   python3 -c '
 import os, re
@@ -176,8 +176,8 @@ xml = "".join(line.strip() for line in xml.splitlines())
 xml = re.sub(r">\s+<", "><", xml)
 if "{RESTAURANT_E164}" in xml or "{PHONEZERO_FROM_NUMBER}" in xml:
     raise SystemExit("error: unsubstituted placeholder in Texml")
-if "<Say>" in xml:
-    raise SystemExit("error: Texml must not include Say (booking JSON is the brief)")
+    if "<Say>" in xml:
+    raise SystemExit("error: Texml must not include Say (task JSON is the brief)")
 if "<Dial" not in xml:
     raise SystemExit("error: Texml missing Dial after substitution")
 print(xml)
@@ -262,7 +262,7 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --brief)
-      echo "error: --brief is removed; booking facts are phonezero-booking.json in the xAI collection (use --booking-json)" >&2
+      echo "error: --brief is removed; facts are phonezero-task.json in the xAI collection (use --booking-json)" >&2
       exit 2
       ;;
     --)
@@ -291,7 +291,7 @@ if [ -z "$RESTAURANT" ]; then
   exit 2
 fi
 
-require_number "restaurant" "$RESTAURANT"
+require_number "callee" "$RESTAURANT"
 
 require_env TELNYX_API_KEY
 require_env PHONEZERO_FROM_NUMBER
@@ -317,7 +317,7 @@ if [ -n "$BOOKING_JSON" ]; then
     "${SCRIPT_DIR}/put-booking-file.sh" "$BOOKING_JSON"
   fi
 fi
-export PHONEZERO_BRIDGE_XML="${SCRIPT_DIR}/../texml/bridge.xml"
+export PHONEZERO_BRIDGE_XML="${SCRIPT_DIR}/../plugins/phonezero/texml/bridge.xml"
 export PHONEZERO_RESTAURANT="$RESTAURANT"
 # SIP To is the xAI number the agent answers. Default: the Telnyx DID
 # (byo_trunk). Override with PHONEZERO_XAI_SIP_NUMBER when the agent is

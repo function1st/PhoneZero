@@ -1,8 +1,8 @@
 {
   "name": "phonezero-grok",
   "displayName": "PhoneZero (Grok)",
-  "version": "0.3.20",
-  "description": "Grok Bot: Telnyx hosted HTTP + PhoneZero xAI stdio. Edit Values for keys. Do not click Authenticate on Telnyx.",
+  "version": "0.4.1",
+  "description": "Grok Bot: phone skills (restaurant first). Telnyx hosted HTTP + PhoneZero xAI stdio. Edit Values for keys. Do not click Authenticate on Telnyx.",
   "author": {
     "name": "Function1st"
   },
@@ -33,18 +33,6 @@
         "type": "string",
         "title": "xAI API key",
         "description": "Secret. ZDR-off team. Injected into the PhoneZero xAI MCP. Never paste in chat."
-      },
-      "PHONEZERO_AGENT_NAME": {
-        "type": "string",
-        "title": "Spoken name the restaurant hears",
-        "description": "Opener: “Hello, this is {name}…”. Default PhoneZero. Change this if you want a different call identity.",
-        "default": "PhoneZero"
-      },
-      "PHONEZERO_DISCLOSE_AI": {
-        "type": "boolean",
-        "title": "AI disclaimer in the opener",
-        "description": "Default on. ON adds “, an automated assistant,”. You may turn this OFF. If the Builder agent already exists, re-paste the prompt once after changing this.",
-        "default": true
       }
     },
     "required": ["TELNYX_API_KEY", "PHONEZERO_FROM_NUMBER", "XAI_API_KEY"]
